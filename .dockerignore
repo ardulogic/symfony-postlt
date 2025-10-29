@@ -1,0 +1,24 @@
+# VCS & IDE
+.git
+.gitignore
+.idea
+.vscode
+
+# Dependencies & caches
+node_modules
+vendor
+var
+public/build
+public/bundles
+**/*.log
+**/*.cache
+
+# Test/coverage & tooling caches
+coverage
+.phpunit.result.cache
+.php-cs-fixer.cache
+.phpstan.cache
+
+# Env/secrets (root and app-level)
+.env
+.env.*.local

@@ -1,0 +1,9 @@
+health_live:
+    path: /health/live
+    controller: App\Health\Http\HealthController::live
+    methods: [GET]
+
+health_ready:
+    path: /health/ready
+    controller: App\Health\Http\HealthController::ready
+    methods: [GET]

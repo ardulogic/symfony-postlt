@@ -1,0 +1,10 @@
+# --- OS cruft
+.DS_Store
+Thumbs.db
+
+# --- IDE (PhpStorm/VS Code)
+.idea/
+.vscode/
+
+# Environment
+.env
