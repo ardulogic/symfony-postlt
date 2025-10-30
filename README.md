@@ -1,9 +1,10 @@
-# Stock Reservation API — Dev & Prod Workflow
-
-> **Note:** Do **not** run `make` with `sudo`. The Makefile auto-detects if your user can talk to Docker and falls back to `sudo docker` when needed.
+# Symfony API Crud Scaffold
 
 ## Prerequisites
-- Docker Engine + Docker Compose v2
+- Prepare Docker Engine + Docker Compose v2
+- `sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+`
+- `sudo systemctl enable --now docker`
 - (Optional) add your user to the `docker` group:
   ```bash
   sudo usermod -aG docker "$USER"
@@ -11,22 +12,34 @@
 
 ## Quick Start
 
-Just launch `make` and it will display all available commands
+### Development Environment
 
-### Dev
-`make up-dev`        # build (if needed) and start api+web+db+redis
+> **Note:** Do **not** run `make` with `sudo`. The Makefile auto-detects if your user can talk to Docker and falls back to `sudo docker` when needed.
 
-### Prod
-`make up-prod`       # build (if needed) and start prod stack
+Build and run the container (it will take some time):
+- `make up-dev`
 
-### Other main commands
-`make down`          # stop prod/dev stack and remove volumes
-`make ps`            # view status
-`make health`        # healthcheck
-`make logs`          # view logs
-`make clear-cache`   # clear cache
+Seed the database with demo data:
+- `make seed-dev`
 
-### Setting up database
-#### Run migrations:
-`docker compose exec api php bin/console doctrine:migrations:diff`
-`docker compose exec api php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration`
+Run unit tests:
+- `make test-dev`
+
+#### Additionally:
+Inspect container status:
+- `make ps-dev`
+
+Stop container:
+- `make down-dev`
+
+Clear and reseed database:  
+- `seed-fresh-dev`  
+
+Open shell in container:  
+- `sh-dev`
+
+
+### Production Environment
+
+Same logic applies to production environment too.
+Simply run `make` to see all commands.
