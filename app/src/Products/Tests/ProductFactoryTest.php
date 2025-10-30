@@ -31,29 +31,29 @@ class ProductFactoryTest extends TestCase
     }
 
     /** Check entity values vs DTO */
-    private static function assertProductEqualsDto(Product $book, ProductDto $dto): void
+    private static function assertProductEqualsDto(Product $product, ProductDto $dto): void
     {
-        self::assertSame($dto->sku, $book->getSku());
-        self::assertSame($dto->name, $book->getName());
+        self::assertSame($dto->sku, $product->getSku());
+        self::assertSame($dto->name, $product->getName());
     }
 
     public function testFromDtoCreatesNewEntity(): void
     {
         $dto = self::dto();
-        $book = $this->factory->fromDto($dto);
+        $product = $this->factory->fromDto($dto);
 
-        self::assertInstanceOf(Product::class, $book);
-        self::assertProductEqualsDto($book, $dto);
+        self::assertInstanceOf(Product::class, $product);
+        self::assertProductEqualsDto($product, $dto);
     }
 
     #[DataProvider('updateProvider')]
     public function testUpdateFromDtoMutatesExistingEntity(ProductDto $updateDto): void
     {
         // start with an entity built from defaults
-        $book = $this->factory->fromDto(self::dto());
-        $this->factory->updateFromDto($book, $updateDto);
+        $product = $this->factory->fromDto(self::dto());
+        $this->factory->updateFromDto($product, $updateDto);
 
-        self::assertProductEqualsDto($book, $updateDto);
+        self::assertProductEqualsDto($product, $updateDto);
     }
 
     public static function updateProvider(): \Generator
@@ -64,5 +64,4 @@ class ProductFactoryTest extends TestCase
         )];
     }
 
-    // TODO: Test update, delete and list of the product
 }

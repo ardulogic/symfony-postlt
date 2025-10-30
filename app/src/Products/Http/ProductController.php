@@ -5,8 +5,8 @@ namespace App\Products\Http;
 use App\Products\Dto\ProductDto;
 use App\Products\Entity\Product;
 use App\Products\Factory\ProductFactory;
-use App\Products\ProductService;
 use App\Products\Repository\ProductRepository;
+use App\Products\Service\ProductService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -16,6 +16,10 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 
+/**
+ * Product Controller
+ * Note: All validations are happening via Dto and Entity automatically
+ */
 final class ProductController extends AbstractController
 {
     public function __construct(
@@ -34,7 +38,6 @@ final class ProductController extends AbstractController
     {
         $product = $factory->fromDto($dto);
 
-        // Validation is handled via DTO/Entity
         $savedProduct = $this->service->create($product);
 
         return $this->json($savedProduct, Response::HTTP_CREATED,
@@ -85,7 +88,6 @@ final class ProductController extends AbstractController
 
         $factory->updateFromDto($existingProduct, $dto);
 
-        // Validation is handled via DTO/Entity
         $updatedProduct = $this->service->update($existingProduct);
 
         return $this->json($updatedProduct, Response::HTTP_OK,

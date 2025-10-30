@@ -27,8 +27,8 @@ final class ProductDto
     {
         $dto = new self();
 
-        $dto->sku  = (string) $data['sku'] ?? null;
-        $dto->name = (string) $data['name'] ?? null;
+        $dto->sku = array_key_exists('sku', $data) ? (string)$data['sku'] : null;
+        $dto->name = array_key_exists('name', $data) ? (string)$data['name'] : null;
 
         return $dto;
     }
