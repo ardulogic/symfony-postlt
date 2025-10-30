@@ -25,3 +25,8 @@ Just launch `make` and it will display all available commands
 `make health`        # healthcheck
 `make logs`          # view logs
 `make clear-cache`   # clear cache
+
+### Setting up database
+#### Run migrations:
+`docker compose exec api php bin/console doctrine:migrations:diff`
+`docker compose exec api php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration`

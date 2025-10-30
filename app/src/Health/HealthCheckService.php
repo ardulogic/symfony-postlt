@@ -3,13 +3,13 @@
 namespace App\Health;
 
 use App\Health\Probe\Abstracts\ProbeInterface;
-use Symfony\Component\DependencyInjection\Attribute\TaggedIterator;
+use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 
 final class HealthCheckService
 {
     /** @param iterable<ProbeInterface> $probes */
     public function __construct(
-        #[TaggedIterator('app.health_probe')]
+        #[AutowireIterator('app.health_probe')]
         private readonly iterable $probes,
     ) {}
 

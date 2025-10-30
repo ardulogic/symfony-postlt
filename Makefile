@@ -24,6 +24,9 @@ help:
 	@echo "  make logs         - Tail prod logs"
 	@echo "  make ps           - Show prod services"
 	@echo "  make down         - Stop prod stack and remove volumes"
+	@echo "  make sh           - Start shell within the container"
+	@echo "  make seed-fresh   - !Caution. Recreate database and seed initial data."
+	@echo "  make test   	   - Run Unit tests"
 	@echo ""
 	@echo "Dev:"
 	@echo "  make build-dev    - Build dev api image (cached)"
@@ -33,6 +36,9 @@ help:
 	@echo "  make logs-dev     - Tail dev logs"
 	@echo "  make ps-dev       - Show dev services"
 	@echo "  make down-dev     - Stop dev stack and remove volumes"
+	@echo "  make sh-dev       - Start shell within the container"
+	@echo "  make seed-fresh-dev   - !Caution. Recreate database and seed initial data."
+	@echo "  make test-dev     - Run Unit tests"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make cache-clear  - Clear Symfony cache in api"
@@ -61,6 +67,27 @@ logs:
 ps:
 	$(COMPOSE) ps
 
+exec:
+	@$(COMPOSE) exec $(INTERACTIVE_FLAG) api bash -lc '$(CMD)'
+
+sh:
+	@$(COMPOSE) exec -it api bash
+
+seed-fresh:
+	$(COMPOSE) exec api bash -lc '\
+		set -euo pipefail; \
+		php bin/console doctrine:database:drop --if-exists --force && \
+		php bin/console doctrine:database:create --if-not-exists && \
+		php bin/console doctrine:migrations:migrate -n && \
+		php bin/console doctrine:fixtures:load -n --group=seed \
+
+test:
+	$(COMPOSE) exec api bash -lc '\
+		set -euo pipefail; \
+		find var/log/test -type f -name "*.log" -exec truncate -s 0 {} \; || true; \
+		./vendor/bin/phpunit'
+
+
 # -------------------
 # DEV
 # -------------------
@@ -74,7 +101,6 @@ rebuild-dev:
 	$(DEV_ENV) $(COMPOSE_DEV) build --no-cache --pull api
 	$(DEV_ENV) $(COMPOSE_DEV) up
 
-# Run composer install after code is bind-mounted (dev stage)
 install-dev:
 	$(DEV_ENV) $(COMPOSE_DEV) run --rm api composer install
 
@@ -87,6 +113,24 @@ ps-dev:
 down-dev:
 	$(DEV_ENV) $(COMPOSE_DEV) down -v
 
+sh-dev:
+	@$(DEV_ENV) $(COMPOSE_DEV) exec -it api bash
+
+seed-fresh-dev:
+	$(DEV_ENV) $(COMPOSE_DEV) exec -T api bash -lc ' \
+		set -euo pipefail; \
+		php bin/console doctrine:database:drop --if-exists --force && \
+		php bin/console doctrine:database:create --if-not-exists && \
+		php bin/console doctrine:migrations:migrate -n && \
+		php bin/console doctrine:fixtures:load -n --group=seed \
+	'
+
+test-dev:
+	$(DEV_ENV) $(COMPOSE_DEV) exec api bash -lc '\
+		set -euo pipefail; \
+		find var/log/test -type f -name "*.log" -exec truncate -s 0 {} \; || true; \
+		./vendor/bin/phpunit'
+
 # -------------------
 # UTIL
 # -------------------
@@ -97,11 +141,11 @@ cache-warm:
 	docker compose exec api php bin/console cache:warmup
 
 health:
-	@echo "Waiting for http://localhost:8080/health/ready ..."
+	@echo "Waiting for http://localhost:8080/api/health/ready ..."
 	@SECONDS=0; \
-	until curl -sf http://localhost:8080/health/ready >/dev/null; do \
+	until curl -sf http://localhost:8080/api/health/ready >/dev/null; do \
 	  sleep 0.5; \
-	  if [ $$SECONDS -gt 60 ]; then echo "Timeout waiting for /health/ready"; exit 1; fi; \
+	  if [ $$SECONDS -gt 60 ]; then echo "Timeout waiting for /api/health/ready"; exit 1; fi; \
 	done; \
 	echo "Health: OK"
 

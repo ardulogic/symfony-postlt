@@ -1,0 +1,25 @@
+products_create:
+    path: products
+    controller: App\Products\Http\ProductController::create
+    methods: [POST]
+
+products_read:
+    path: products/{sku}
+    controller: App\Products\Http\ProductController::read
+    methods: [ GET ]
+
+products_list:
+    path: products
+    controller: App\Products\Http\ProductController::list
+    methods: [ GET ]
+
+products_update:
+    path: products/{sku}
+    controller: App\Products\Http\ProductController::update
+    methods: [PUT]
+
+products_delete:
+    path: products/{sku}
+    controller: App\Products\Http\ProductController::delete
+    methods: [ DELETE ]
+

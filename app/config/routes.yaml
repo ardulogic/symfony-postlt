@@ -1,3 +1,8 @@
-health:
-    resource: ../src/Health/Infrastructure/Symfony/routes.yaml
+# config/routes.yaml
+
+# Registers all module routes
+api:
+    resource: '../src/*/Infra/Symfony/routes.yaml'
+    type: glob
+    prefix: /api
 

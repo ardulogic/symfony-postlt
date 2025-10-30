@@ -22,3 +22,9 @@ services:
         factory: ['Symfony\Component\Cache\Adapter\RedisAdapter', 'createConnection']
         arguments: ['%env(REDIS_URL)%']
 
+    App\Shared\Http\ApiExceptionSubscriber:
+        tags: [ 'kernel.event_subscriber' ]
+
+    _instanceof:
+        Doctrine\Bundle\FixturesBundle\Fixture:
+            tags: ['doctrine.fixture.orm']

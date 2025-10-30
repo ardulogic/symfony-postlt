@@ -27,11 +27,19 @@ doctrine:
         controller_resolver:
             auto_mapping: false
 
+when@dev:
+    doctrine:
+        dbal:
+            logging: true     # send SQL to logger
+            profiling: true   # collect timings (profiler/collectors)
+
 when@test:
     doctrine:
         dbal:
             # "TEST_TOKEN" is typically set by ParaTest
             dbname_suffix: '_test%env(default::TEST_TOKEN)%'
+            logging: true     # send SQL to logger
+            profiling: true   # collect timings (profiler/collectors)
 
 when@prod:
     doctrine:
