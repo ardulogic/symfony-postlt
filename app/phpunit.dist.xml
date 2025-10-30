@@ -26,6 +26,9 @@
         <testsuite name="products">
             <directory>src/Products/Tests</directory>
         </testsuite>
+        <testsuite name="warehousing">
+            <directory>src/Warehousing/Tests</directory>
+        </testsuite>
     </testsuites>
 
     <source ignoreSuppressionOfDeprecations="true"

@@ -1,0 +1,28 @@
+# I'm registering routes like instead of magic methods since its easier to refactor in the future
+# and see a general overview
+
+warehouses_create:
+    path: warehouses
+    controller: App\Warehousing\Http\WarehouseController::create
+    methods: [POST]
+
+warehouses_read:
+    path: warehouses/{code}
+    controller: App\Warehousing\Http\WarehouseController::read
+    methods: [ GET ]
+
+warehouses_list:
+    path: warehouses
+    controller: App\Warehousing\Http\WarehouseController::list
+    methods: [ GET ]
+
+warehouses_update:
+    path: warehouses/{code}
+    controller: App\Warehousing\Http\WarehouseController::update
+    methods: [PUT]
+
+warehouses_delete:
+    path: warehouses/{code}
+    controller: App\Warehousing\Http\WarehouseController::delete
+    methods: [ DELETE ]
+
