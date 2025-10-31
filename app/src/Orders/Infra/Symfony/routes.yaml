@@ -1,0 +1,10 @@
+orders_read:
+    path: /orders/{number}
+    controller: App\Orders\Http\OrderController::read
+    methods: [GET]
+
+orders_create:
+    path: /orders/create
+    controller: App\Orders\Http\OrderController::create
+    methods: [POST]
+

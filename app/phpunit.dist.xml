@@ -29,6 +29,9 @@
         <testsuite name="warehousing">
             <directory>src/Warehousing/Tests</directory>
         </testsuite>
+        <testsuite name="orders">
+            <directory>src/Orders/Tests</directory>
+        </testsuite>
     </testsuites>
 
     <source ignoreSuppressionOfDeprecations="true"
