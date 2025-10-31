@@ -26,3 +26,19 @@ warehouses_delete:
     controller: App\Warehousing\Http\WarehouseController::delete
     methods: [ DELETE ]
 
+
+stock_items_read:
+    path: warehouses/{code}/stock/{sku}
+    controller: App\Warehousing\Http\StockItemController::read
+    methods: [ GET ]
+    requirements:
+        code: '(?-i)[A-Z0-9._-]{1,32}'
+        sku: '(?-i)[A-Z0-9._-]{1,64}'
+
+stock_items_receive:
+    path: warehouses/{code}/stock/{sku}/receive
+    controller: App\Warehousing\Http\StockItemController::receive
+    methods: [ POST ]
+    requirements:
+        code: '(?-i)[A-Z0-9._-]{1,32}'
+        sku: '(?-i)[A-Z0-9._-]{1,64}'
