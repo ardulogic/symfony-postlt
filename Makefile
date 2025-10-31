@@ -1,7 +1,7 @@
 # Makefile
-.PHONY: help build up rebuild down logs ps \
-        build-dev up-dev rebuild-dev down-dev logs-dev ps-dev \
-        install-dev ready
+.PHONY: help build up rebuild down logs ps exec sh fresh-seed test \
+        build-dev up-dev rebuild-dev down-dev logs-dev ps-dev install-dev sh-dev \
+        fresh-seed-dev fresh-diff-seed-dev test-dev cache-clear cache-warm health
 
 # If your user isn't in the "docker" group, this will auto-fallback to sudo
 DOCKER := $(shell groups | grep -qw docker && echo docker || echo "sudo docker")
@@ -37,7 +37,8 @@ help:
 	@echo "  make ps-dev       - Show dev services"
 	@echo "  make down-dev     - Stop dev stack and remove volumes"
 	@echo "  make sh-dev       - Start shell within the container"
-	@echo "  make seed-fresh-dev   - !Caution. Recreate database and seed initial data."
+	@echo "  make fresh-seed-dev      - !Caution. Recreate whole database and seed."
+	@echo "  make fresh-diff-seed-dev - !Caution. Make db diff, migrate, purge data and seed."
 	@echo "  make test-dev     - Run Unit tests"
 	@echo ""
 	@echo "Utilities:"
@@ -73,7 +74,7 @@ exec:
 sh:
 	@$(COMPOSE) exec -it api bash
 
-seed-fresh:
+fresh-seed:
 	$(COMPOSE) exec api bash -lc '\
 		set -euo pipefail; \
 		php bin/console doctrine:database:drop --if-exists --force && \
@@ -85,7 +86,7 @@ test:
 	$(COMPOSE) exec api bash -lc '\
 		set -euo pipefail; \
 		find var/log/test -type f -name "*.log" -exec truncate -s 0 {} \; || true; \
-		./vendor/bin/phpunit'
+		./vendor/bin/phpunit --testdox --colors=always --stop-on-defect'
 
 
 # -------------------
@@ -116,11 +117,18 @@ down-dev:
 sh-dev:
 	@$(DEV_ENV) $(COMPOSE_DEV) exec -it api bash
 
-seed-fresh-dev:
+fresh-seed-dev:
 	$(DEV_ENV) $(COMPOSE_DEV) exec -T api bash -lc ' \
 		set -euo pipefail; \
 		php bin/console doctrine:database:drop --if-exists --force && \
 		php bin/console doctrine:database:create --if-not-exists && \
+		php bin/console doctrine:migrations:migrate -n && \
+		php bin/console doctrine:fixtures:load -n --group=seed \
+	'
+fresh-diff-seed-dev:
+	$(DEV_ENV) $(COMPOSE_DEV) exec -T api bash -lc ' \
+		set -euo pipefail; \
+		php bin/console doctrine:migrations:diff && \
 		php bin/console doctrine:migrations:migrate -n && \
 		php bin/console doctrine:fixtures:load -n --group=seed \
 	'
@@ -129,7 +137,7 @@ test-dev:
 	$(DEV_ENV) $(COMPOSE_DEV) exec api bash -lc '\
 		set -euo pipefail; \
 		find var/log/test -type f -name "*.log" -exec truncate -s 0 {} \; || true; \
-		./vendor/bin/phpunit'
+		./vendor/bin/phpunit --testdox --colors=always --stop-on-defect'
 
 # -------------------
 # UTIL
