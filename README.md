@@ -19,8 +19,8 @@
 Build and run the container (it will take some time):
 - `make up-dev`
 
-Seed the database with demo data:
-- `make seed-dev`
+Create and seed the database with demo data:
+- `make fresh-seed-dev`
 
 Run unit tests:
 - `make test-dev`
@@ -31,9 +31,6 @@ Inspect container status:
 
 Stop container:
 - `make down-dev`
-
-Clear and reseed database:  
-- `seed-fresh-dev`  
 
 Open shell in container:  
 - `sh-dev`
