@@ -60,14 +60,14 @@ final class UpdateOrderStatusHandler
         // Update existing order lines with warehousing data
         foreach ($order->getLines() as $orderLine) {
             $sku = $orderLine->getProductSku();
-            
+
             if (isset($warehousingLineMap[$sku])) {
                 $warehousingLine = $warehousingLineMap[$sku];
-                
+
                 // Set quantities and status directly from warehousing (no recomputation)
                 $orderLine->setQtyReserved($warehousingLine['qtyReserved']);
                 $orderLine->setQtyShipped($warehousingLine['qtyShipped']);
-                
+
                 // Map warehousing line status to order line status
                 $orderLineStatus = $this->mapReservationLineStatusToOrderLineStatus($warehousingLine['status']);
                 if ($orderLineStatus) {
@@ -84,9 +84,9 @@ final class UpdateOrderStatusHandler
             'RESERVED' => OrderLineStatus::RESERVED,
             'RESERVED_PARTIAL' => OrderLineStatus::RESERVED_PARTIAL,
             'SHIPPED' => OrderLineStatus::SHIPPED,
-            'SHIPPED_PARTIAL' => OrderLineStatus::SHIPPED, // Map partial shipped to shipped for orders
+            'SHIPPED_PARTIAL' => OrderLineStatus::SHIPPED_PARTIAL, // Map partial shipped to shipped for orders
             'CANCELED' => OrderLineStatus::CANCELED,
-            'OUT_OF_STOCK' => OrderLineStatus::PENDING, // Out of stock is still pending from order perspective
+            'OUT_OF_STOCK' => OrderLineStatus::OUT_OF_STOCK, // Out of stock is still pending from order perspective
             default => null, // Unknown status, don't update
         };
     }
