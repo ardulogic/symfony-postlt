@@ -1,70 +1,73 @@
-# PostLit - E-Commerce Order Management System
+# 📦  Post.Lt Task
+#  E-Commerce Stock Management System
 
 ## About
 
 PostLit is a Symfony-based, modular application for orders and warehousing, designed to demonstrate clean boundaries and asynchronous communication without going "full microservices". Each module has its own controllers, services, entities, and messaging handlers, and communicates via Symfony Messenger (Redis) instead of direct service calls.
 
-Why this structure:
+### Why this structure:
 - Decoupled modules model real-world teams and ownership without operational overhead of many deployables.
 - Async messaging keeps modules independent in time and failure modes, while still simple to develop locally.
 - Orders do not compute availability; Warehousing is the source of truth for reservation and shipment states.
+- Queues solve many racing problems
 
-Intentional design choices:
+#### Intentional design choices:
 - Single-warehouse allocation per SKU line: the system does not split a single order line across multiple warehouses. Reasons:
-  - Lower total shipping and handling fees by avoiding split shipments per line.
-  - Simpler customer experience (one parcel per line reduces tracking complexity).
-  - Reduced risk of partial shipments arriving out of order and causing support churn.
-  - Clearer stock movements and easier reconciliation for finance/ops.
-  - Keeps allocation logic straightforward for this demo; cross-warehouse splitting can be added later if desired.
+    - Lower total shipping and handling fees by avoiding split shipments per line.
+    - Simpler customer experience (one parcel per line reduces tracking complexity).
+    - Reduced risk of partial shipments arriving out of order and causing support churn.
+    - Clearer stock movements and easier reconciliation for finance/ops.
+    - Keeps allocation logic straightforward for this demo; cross-warehouse splitting can be added later if desired.
 
-Messaging:
+#### Messaging:
 - Orders → Warehousing: OrderCreatedMessage (create reservations)
 - Warehousing → Orders: StockReservationStatusChangedMessage (sync statuses)
 - Reallocation: ReallocateStockJob queued on cancels and stock receipts
 
-## Quick Start
+## 🚀 Quick Start
 
-Prerequisites:
-- Docker + Docker Compose v2
+### Prerequisites:
+- Docker Engine 24.0.x
+- Compose 2.18.x
+- It might work on other versions too, but thats what it was built on
 
-Setup:
-1) Build and start containers
+### Setup:
+#### 1) Build and start containers
 ```bash
 make up-dev
 ```
 
-2) Create required directories
+#### 2) Create required directories inside running container
 ```bash
 make prepare-dirs-dev
 
 ```
-3) Install composer dependencies
+#### 3) Install composer dependencies
 ```bash
 make install-dev
 ```
 
-4) Initialize database and seed demo data (products, warehouses, stock)
+#### 4) Initialize PostGres database and seed demo data fixtures
 ```bash
 make fresh-seed-dev
 ```
 
-5) Run the worker which processes redis queues
+#### 5) Run the worker which processes redis queues
 ```bash
 make worker-dev
 ```
 
-Thats it!
+### Thats it!
 
-API pulse URL: `http://localhost:8080/api/health/ready`
+#### API pulse URL: [http://localhost:8080/api/health/ready](http://localhost:8080/api/health/ready)
 
-## Testing
+## 🛠️ Testing
 
-Run the test suite:
+#### Run the unit test suite:
 ```bash
 make test-dev
 ```
-
-Notes:
+### Notes:
 - Tests use the async in-memory messenger transport to assert dispatches.
 - Warehousing reallocation is exercised by cancelling reservations or receiving stock.
 
@@ -74,13 +77,14 @@ See [`API.md`](docs/API.md) for all endpoints, payloads, and examples.
 
 ### Health Checks
 
-- **`GET /api/health/live`** - Liveness probe
-- **`GET /api/health/ready`** - Readiness probe (checks DB and Redis)
+- **`GET`** [/api/health/live](http://localhost:8080/api/health/live) - Liveness probe
+- **`GET`** [/api/health/ready](http://localhost:8080/api/health/ready) - Readiness probe (checks DB and Redis)
 
 ### Main API endpoints
 
 #### List Stock Items
-**`GET /api/warehouses/stock?page=1&per_page=20`**  
+**`GET`** [/api/warehouses/stock](http://localhost:8080/api/warehouses/stock)`?page=1&per_page=20  `
+
 **Query Parameters:**
 - `page` (optional, default: 1) - Page number
 - `per_page` (optional, default: 20, max: 100) - Items per page
@@ -102,14 +106,14 @@ See [`API.md`](docs/API.md) for all endpoints, payloads, and examples.
 ```
 
 #### Create Order
-**`POST /api/orders/create`**
+**`POST`** [/api/orders/create](http://localhost:8080/api/orders/create)
 ```json
 {
-    "number": "ORD-001",
-    "lines": [
-        {"productSku": "SKU-001", "qty": 2},
-        {"productSku": "SKU-002", "qty": 1}
-    ]
+  "number": "ORD-001",
+  "lines": [
+    {"productSku": "SKU-001", "qty": 2},
+    {"productSku": "SKU-002", "qty": 1}
+  ]
 }
 ```
 **Response:** `201 Created` with `Location` header  
@@ -118,13 +122,14 @@ See [`API.md`](docs/API.md) for all endpoints, payloads, and examples.
 - Make sure your worker is running: `make worker-dev` !
 
 #### Read Order
-**`GET /api/orders/{number}`**  
+**`GET`** [/api/orders/{number}](http://localhost:8080/api/orders/ORD-001)  
 **Response:** `200 OK` with order JSON (includes lines, status)
 
 - When order is allocated it will be updated via queue.
 
 #### List Reservations
-**`GET /api/warehouses/stock/reservations?page=1&per_page=20`**  
+**`GET`** [/api/warehouses/stock/reservations](http://localhost:8080/api/warehouses/stock/reservations)`?page=1&per_page=20`
+
 **Query Parameters:**
 - `page` (optional, default: 1) - Page number
 - `per_page` (optional, default: 20, max: 100) - Items per page
@@ -146,29 +151,29 @@ See [`API.md`](docs/API.md) for all endpoints, payloads, and examples.
 ```
 
 #### Cancel Reservation
-**`PUT /api/warehouses/stock/reservations/{number}`**  
+**`PUT`** [/api/warehouses/stock/reservations/{number}](http://localhost:8080/api/warehouses/stock/reservations/ORD-001)  
 **Response:** `202 Accepted`  
-**Triggers:** 
+**Triggers:**
 - Dispatches `StockReservationStatusChangedMessage` with `CANCELED` status
 - Dispatches `ReallocateStockJob` for stock reallocation
 
 #### Ship Reservations
-**`POST /api/warehouses/stock/reservations/{number}/ship`**  
+**`POST`** [/api/warehouses/stock/reservations/{number}/ship](http://localhost:8080/api/warehouses/stock/reservations/ORD-001/ship)  
 **Response:** `202 Accepted`  
 **Triggers:** Dispatches `StockReservationStatusChangedMessage` with `SHIPPED` status
 
 #### Receive Stock
-**`POST /api/warehouses/{code}/stock/{sku}/receive`**
+**`POST`** [/api/warehouses/{code}/stock/{sku}/receive](http://localhost:8080/api/warehouses/WARE-EU-1/stock/SKU-001/receive)
 ```json
 {
-    "qty": 100
+  "qty": 100
 }
 ```
 **Response:** `201 Created` - Adds stock to warehouse  
 **Parameters:**
 - `code` - Warehouse code (1-32 chars, alphanumeric)
 - `sku` - Product SKU (1-64 chars, alphanumeric)
-**Triggers:** Dispatches `ReallocateStockJob` for the received SKU to reattempt allocations
+  **Triggers:** Dispatches `ReallocateStockJob` for the received SKU to reattempt allocations
 
 ## Testing
 
@@ -223,7 +228,7 @@ When changing entities:
 
 ```bash
 # Generate migration
-php bin/console doctrine:migrations:diff
+php bin/console doctrine:migrations:diff 
 
 # Apply migration
 php bin/console doctrine:migrations:migrate
