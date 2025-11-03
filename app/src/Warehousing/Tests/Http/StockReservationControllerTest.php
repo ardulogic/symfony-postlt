@@ -32,16 +32,16 @@ final class StockReservationControllerTest extends WebTestCase
     {
         $this->expectSuccess();
 
-        $number = 'ORD-TEST-001';
-        $this->requireReservation($number);
+        $reservationNumber = 'ORD-TEST-001';
+        $this->requireReservation($reservationNumber);
 
-        $this->client->request('GET', $this->url('stock_reservations_read', ['number' => $number]));
+        $this->client->request('GET', $this->url('stock_reservations_read', ['number' => $reservationNumber]));
 
         self::assertResponseStatusCodeSame(200);
 
         $json = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($json);
-        self::assertSame($number, $json['number'] ?? null);
+        self::assertSame($reservationNumber, $json['number'] ?? null);
 
         // Lines should be present and an array (fixture has 2)
         self::assertArrayHasKey('lines', $json);
@@ -78,9 +78,9 @@ final class StockReservationControllerTest extends WebTestCase
     {
         $this->expectSuccess();
 
-        $number = 'ORD-NEW-001';
+        $reservationNumber = 'ORD-NEW-001';
         $payload = [
-            'number' => $number,
+            'number' => $reservationNumber,
             'lines' => [
                 ['productSku' => 'SKU-001', 'qty' => 2],
                 ['productSku' => 'SKU-002', 'qty' => 1],
@@ -88,7 +88,7 @@ final class StockReservationControllerTest extends WebTestCase
         ];
 
         $createUrl = $this->url('stock_reservations_create');
-        $readUrl = $this->url('stock_reservations_read', ['number' => $number]);
+        $readUrl = $this->url('stock_reservations_read', ['number' => $reservationNumber]);
 
         $this->client->request(
             'POST',
@@ -102,9 +102,9 @@ final class StockReservationControllerTest extends WebTestCase
         $location = $this->client->getResponse()->headers->get('Location');
         self::assertSame($readUrl, parse_url($location, PHP_URL_PATH));
 
-        $saved = $this->repo->findOneByNumber($number);
+        $saved = $this->repo->findOneByNumber($reservationNumber);
         self::assertInstanceOf(StockReservation::class, $saved);
-        self::assertSame($number, $saved->getNumber());
+        self::assertSame($reservationNumber, $saved->getNumber());
         self::assertCount(2, $saved->getLines()); // two distinct SKUs
     }
 
@@ -113,7 +113,7 @@ final class StockReservationControllerTest extends WebTestCase
         $this->expectError(); // we expect a 4xx response
 
         $payload = [
-            'number' => 'ORD-TEST-001', // already seeded by OrderTestFixture
+            'number' => 'ORD-TEST-001', // already seeded by fixture
             'lines' => [
                 ['productSku' => 'SKU-001', 'qty' => 1],
             ],
@@ -138,12 +138,12 @@ final class StockReservationControllerTest extends WebTestCase
     {
         $this->expectError();
 
-        $number = 'ORD-NEW-999';
+        $reservationNumber = 'ORD-NEW-999';
         $payload = [
-            'number' => $number,
+            'number' => $reservationNumber,
             'lines' => [
                 ['productSku' => 'SKU-001', 'qty' => 1],
-                ['productSku' => 'SKU-001', 'qty' => 2], // same SKU, different case
+                ['productSku' => 'SKU-001', 'qty' => 2], // duplicate SKU in lines
             ],
         ];
 
@@ -161,9 +161,9 @@ final class StockReservationControllerTest extends WebTestCase
     {
         $this->expectSuccess();
 
-        $number = 'ORD-MSG-CREATE-001';
+        $reservationNumber = 'ORD-MSG-CREATE-001';
         $payload = [
-            'number' => $number,
+            'number' => $reservationNumber,
             'lines' => [
                 ['productSku' => 'SKU-001', 'qty' => 2],
             ],
@@ -186,7 +186,7 @@ final class StockReservationControllerTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
 
         // Verify reservation was created
-        $reservation = $this->repo->findOneByNumber($number);
+        $reservation = $this->repo->findOneByNumber($reservationNumber);
         self::assertInstanceOf(StockReservation::class, $reservation);
 
         // Verify message was dispatched
@@ -197,7 +197,7 @@ final class StockReservationControllerTest extends WebTestCase
         $message = $envelope->getMessage();
 
         self::assertInstanceOf(StockReservationStatusChangedMessage::class, $message);
-        self::assertSame($number, $message->reservationNumber);
+        self::assertSame($reservationNumber, $message->reservationNumber);
         self::assertNotEmpty($message->status, 'Status should be set');
         // Status could be RESERVED, RESERVED_PARTIAL, or OUT_OF_STOCK depending on stock availability
         self::assertContains($message->status, ['RESERVED', 'RESERVED_PARTIAL', 'OUT_OF_STOCK', 'PENDING']);
@@ -217,9 +217,9 @@ final class StockReservationControllerTest extends WebTestCase
     {
         $this->expectSuccess();
 
-        $number = 'ORD-MSG-CANCEL-001';
+        $reservationNumber = 'ORD-MSG-CANCEL-001';
         $payload = [
-            'number' => $number,
+            'number' => $reservationNumber,
             'lines' => [
                 ['productSku' => 'SKU-001', 'qty' => 1],
             ],
@@ -243,7 +243,7 @@ final class StockReservationControllerTest extends WebTestCase
         // Cancel the reservation
         $this->client->request(
             'PUT',
-            $this->url('stock_reservations_cancel', ['number' => $number]),
+            $this->url('stock_reservations_cancel', ['number' => $reservationNumber]),
             server: ['CONTENT_TYPE' => 'application/json']
         );
 
@@ -257,7 +257,7 @@ final class StockReservationControllerTest extends WebTestCase
         $message = $envelope->getMessage();
 
         self::assertInstanceOf(StockReservationStatusChangedMessage::class, $message);
-        self::assertSame($number, $message->reservationNumber);
+        self::assertSame($reservationNumber, $message->reservationNumber);
         self::assertSame('CANCELED', $message->status);
 
         // Verify lines data is included
@@ -275,9 +275,9 @@ final class StockReservationControllerTest extends WebTestCase
     {
         $this->expectSuccess();
 
-        $number = 'ORD-MSG-SHIP-001';
+        $reservationNumber = 'ORD-MSG-SHIP-001';
         $payload = [
-            'number' => $number,
+            'number' => $reservationNumber,
             'lines' => [
                 ['productSku' => 'SKU-001', 'qty' => 1],
             ],
@@ -301,7 +301,7 @@ final class StockReservationControllerTest extends WebTestCase
         // Ship the reservation
         $this->client->request(
             'POST',
-            $this->url('stock_reservations_ship', ['number' => $number]),
+            $this->url('stock_reservations_ship', ['number' => $reservationNumber]),
             server: ['CONTENT_TYPE' => 'application/json']
         );
 
@@ -315,7 +315,7 @@ final class StockReservationControllerTest extends WebTestCase
         $message = $envelope->getMessage();
 
         self::assertInstanceOf(StockReservationStatusChangedMessage::class, $message);
-        self::assertSame($number, $message->reservationNumber);
+        self::assertSame($reservationNumber, $message->reservationNumber);
         self::assertSame('SHIPPED', $message->status);
 
         // Verify lines data is included

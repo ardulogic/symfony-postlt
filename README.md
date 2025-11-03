@@ -58,7 +58,7 @@ The modules are **completely isolated** - they don't share entities or directly 
 - Stock reservation management
 - Inventory allocation and tracking
 - Stock reservation lifecycle (create, cancel, ship)
-- Stock reallocation when reservations are cancelled
+- Stock reallocation when reservations are cancelled or when stock is received
 
 **Key Components:**
 - `StockReservationController`: HTTP endpoints for reservation operations
@@ -71,7 +71,7 @@ The modules are **completely isolated** - they don't share entities or directly 
 **Stock Allocation Strategy:**
 - Prefers single-warehouse allocation when possible
 - FIFO (First In First Out) for waiting reservations
-- Automatic reallocation when stock becomes available
+- Automatic reallocation when stock becomes available (via cancellation or stock receipts)
 
 ## Messaging Architecture
 
@@ -389,6 +389,7 @@ All endpoints are prefixed with `/api`.
 **Parameters:**
 - `code` - Warehouse code (1-32 chars, alphanumeric)
 - `sku` - Product SKU (1-64 chars, alphanumeric)
+**Triggers:** Dispatches `ReallocateStockJob` for the received SKU to reattempt allocations
 
 #### Warehouses
 
@@ -519,36 +520,6 @@ php bin/console doctrine:migrations:migrate
 
 # Or use make command
 make fresh-diff-seed-dev  # Creates diff, migrates, and seeds
-```
-
-### Adding New Messages
-
-1. Create message class (e.g., `src/Orders/Messages/MyMessage.php`)
-2. Add routing in `config/packages/messenger.yaml`
-3. Create handler in target module
-4. Dispatch message from source module
-5. Write tests to verify dispatch
-
-### Code Structure
-
-```
-app/src/
-├── Orders/              # Orders module
-│   ├── Entity/         # Order entities
-│   ├── Http/           # Controllers
-│   ├── Messages/       # Outbound messages
-│   │   └── Handlers/   # Inbound message handlers
-│   ├── Service/        # Business logic
-│   └── Tests/          # Module tests
-├── Warehousing/         # Warehousing module
-│   ├── Entity/         # Reservation & inventory entities
-│   ├── Http/           # Controllers
-│   ├── Messages/       # Outbound messages
-│   │   └── Handlers/   # Inbound message handlers
-│   ├── Service/        # Business logic
-│   └── Tests/          # Module tests
-└── Shared/             # Shared utilities
-    └── Tests/          # Base test classes
 ```
 
 ## Order Lifecycle Example

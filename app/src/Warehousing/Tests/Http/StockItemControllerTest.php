@@ -36,10 +36,10 @@ final class StockItemControllerTest extends WebTestCase
     {
         $this->expectSuccess();
 
-        $code = 'WARE-EU-1';
-        $sku  = 'SKU-001';
+        $warehouseCode = 'WARE-EU-1';
+        $productSku  = 'SKU-001';
 
-        $this->client->request('GET',  $this->url('stock_items_read', ['code' =>$code, 'sku' => $sku]));
+        $this->client->request('GET',  $this->url('stock_items_read', ['code' => $warehouseCode, 'sku' => $productSku]));
 
         self::assertResponseStatusCodeSame(200);
         self::assertTrue(
@@ -53,7 +53,7 @@ final class StockItemControllerTest extends WebTestCase
         // Be tolerant to serializer shape
         $payloadSku = $data['productSku'] ?? $data['sku'] ?? null;
         if ($payloadSku !== null) {
-            self::assertSame($sku, $payloadSku);
+            self::assertSame($productSku, $payloadSku);
         }
     }
 
@@ -61,10 +61,10 @@ final class StockItemControllerTest extends WebTestCase
     {
         $this->expectError();
 
-        $code = 'WARE-EU-1';
-        $sku  = 'NOPE-999';
+        $warehouseCode = 'WARE-EU-1';
+        $productSku  = 'NOPE-999';
 
-        $this->client->request('GET', $this->url('stock_items_read', ['code' => $code, 'sku' => $sku]));
+        $this->client->request('GET', $this->url('stock_items_read', ['code' => $warehouseCode, 'sku' => $productSku]));
 
         self::assertResponseStatusCodeSame(404);
 
@@ -91,11 +91,10 @@ final class StockItemControllerTest extends WebTestCase
     {
         $this->expectSuccess();
 
-        $code = 'WARE-EU-1';
-        $sku  = 'SKU-003'; // not in fixture → should create
+        $warehouseCode = 'WARE-EU-1';
+        $productSku  = 'SKU-003'; // not in fixture → should create
 
-        $postUrl  = $this->url('stock_items_receive', ['code' => $code, 'sku' => $sku]);
-        $readUrl = $this->url('stock_items_read', ['code' => $code, 'sku' => $sku]);
+        $postUrl  = $this->url('stock_items_receive', ['code' => $warehouseCode, 'sku' => $productSku]);
 
         $this->client->request(
             'POST',
@@ -106,7 +105,7 @@ final class StockItemControllerTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(201);
 
-        $item = $this->repo->findOneByWarehouseCodeAndSku($code, $sku);
+        $item = $this->repo->findOneByWarehouseCodeAndSku($warehouseCode, $productSku);
         self::assertNotNull($item, 'Stock item should be created');
         self::assertSame(5, $item->getOnHandQty());
         self::assertSame(0, $item->getReservedQty());
@@ -116,18 +115,18 @@ final class StockItemControllerTest extends WebTestCase
     {
         $this->expectSuccess();
 
-        $code = 'WARE-EU-1';
-        $sku  = 'SKU-001'; // fixture has it
+        $warehouseCode = 'WARE-EU-1';
+        $productSku  = 'SKU-001'; // fixture has it
 
         // before
-        $beforeItem = $this->repo->findOneByWarehouseCodeAndSku($code, $sku);
+        $beforeItem = $this->repo->findOneByWarehouseCodeAndSku($warehouseCode, $productSku);
         self::assertNotNull($beforeItem);
         $beforeLv = $beforeItem->getLockVersion();
         $beforeOnHand = $beforeItem->getOnHandQty();
         $this->em->clear();
 
         // act
-        $url = $this->url('stock_items_receive', ['code' => $code, 'sku' => $sku]);
+        $url = $this->url('stock_items_receive', ['code' => $warehouseCode, 'sku' => $productSku]);
         $this->client->request(
             'POST',
             $url,
@@ -140,7 +139,7 @@ final class StockItemControllerTest extends WebTestCase
         static::getContainer()->get('doctrine')->getManager()->clear();
 
         // after
-        $afterItem = $this->repo->findOneByWarehouseCodeAndSku($code, $sku);
+        $afterItem = $this->repo->findOneByWarehouseCodeAndSku($warehouseCode, $productSku);
         self::assertNotNull($afterItem);
         self::assertTrue($beforeLv  < $afterItem->getLockVersion());
         self::assertSame($beforeOnHand + 3, $afterItem->getOnHandQty());

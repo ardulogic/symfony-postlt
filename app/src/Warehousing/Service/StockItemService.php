@@ -17,6 +17,7 @@ final class StockItemService
         private WarehouseRepository    $warehouseRepo,
         private StockItemRepository    $stockItemRepo,
         private ValidatorInterface     $validator,
+        private StockReservationService $stockReservationService,
     )
     {
     }
@@ -25,9 +26,17 @@ final class StockItemService
     {
         // Wrap in transaction
         // we use this layer since the transaction could be much broader
-        return $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($warehouse, $sku, $dto): StockItem {
+        $item = $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($warehouse, $sku, $dto): StockItem {
             return $this->stockItemRepo->addStock($warehouse->getId(), $sku, $dto->qty);
         });
+
+        // Trigger reallocation for the affected SKU
+        $this->stockReservationService->dispatchStockReallocation(
+            'stock-receive:' . ($item->getId() ?? uniqid('si:', true)),
+            [$sku]
+        );
+
+        return $item;
 
     }
 

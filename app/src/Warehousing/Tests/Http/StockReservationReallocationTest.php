@@ -231,4 +231,38 @@ final class StockReservationReallocationTest extends WebTestCase
 
         self::assertTrue($this->resRepo->findOneByNumber($number)->isReallocationLocked(), 'Reservation should remain locked for reallocation');
     }
+
+    public function test_receiving_stock_triggers_reallocation_for_waiting_reservation(): void
+    {
+        $this->expectSuccess();
+
+        $sku = 'SKU-001';
+        $avail = $this->maxAvailable($sku);
+        self::assertGreaterThan(0, $avail);
+
+        // Create one that consumes all, and one that has to wait (partial)
+        $this->createReservation('ORD-REALLOC-ADD-1', $sku, $avail);
+        $this->createReservation('ORD-REALLOC-ADD-2', $sku, $avail + 1);
+
+        $before = $this->readReservation('ORD-REALLOC-ADD-2');
+        $reservedBefore = $before['lines'][0]['reservedQty'];
+        self::assertSame(StockReservationStatus::RESERVED_PARTIAL->value, $before['status']);
+
+        // Receive new stock for the same SKU at an existing warehouse
+        $code = 'WARE-EU-4'; // exists in fixtures; can accept new SKU rows
+        $this->client->request(
+            'POST',
+            $this->url('stock_items_receive', ['code' => $code, 'sku' => $sku]),
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: json_encode(['qty' => 2], JSON_THROW_ON_ERROR)
+        );
+        self::assertResponseStatusCodeSame(201);
+
+        // Process async reallocation job
+        TestQueueWorker::doQueuedJobs($this->c);
+
+        $after = $this->readReservation('ORD-REALLOC-ADD-2');
+        self::assertGreaterThan($reservedBefore, $after['lines'][0]['reservedQty']);
+        self::assertContains($after['status'], [StockReservationStatus::RESERVED->value, StockReservationStatus::RESERVED_PARTIAL->value]);
+    }
 }
