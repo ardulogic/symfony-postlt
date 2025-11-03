@@ -1,12 +1,18 @@
 <?php
 
-namespace App\Shared\Tests\Support;
+namespace App\Tests\Support\Queues;
 
 use Psr\Log\LoggerInterface;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Worker;
 
+/**
+ * Note!
+ * This has to be here, because otherwise it's also loaded on dev/prod
+ * environments and kills the worker as soon as queue empties
+ * Make sure this file is loaded only on test env!
+ */
 class TestQueueWorker
 {
 

@@ -6,7 +6,7 @@ namespace App\Products\Tests\Http;
 use App\Products\Entity\Product;
 use App\Products\Repository\ProductRepository;
 use App\Products\Tests\DataFixtures\ProductTestFixture;
-use App\Shared\Tests\WebTestCase;
+use App\Tests\Support\WebTestCase;
 use JsonException;
 
 final class ProductControllerTest extends WebTestCase

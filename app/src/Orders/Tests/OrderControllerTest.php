@@ -7,7 +7,7 @@ use App\Orders\Entity\Order;
 use App\Orders\Messages\OrderCreatedMessage;
 use App\Orders\Repository\OrderRepository;
 use App\Orders\Tests\DataFixtures\OrderTestFixture;
-use App\Shared\Tests\WebTestCase;
+use App\Tests\Support\WebTestCase;
 use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 final class OrderControllerTest extends WebTestCase

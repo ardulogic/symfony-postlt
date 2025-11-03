@@ -2,7 +2,7 @@
 
 namespace App\Warehousing\Tests\Http;
 
-use App\Shared\Tests\WebTestCase;
+use App\Tests\Support\WebTestCase;
 use App\Warehousing\Enum\StockReservationLineStatus;
 use App\Warehousing\Enum\StockReservationStatus;
 use App\Warehousing\Tests\DataFixtures\StockReservationEmptyTestFixture;

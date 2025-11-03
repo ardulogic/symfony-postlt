@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace App\Warehousing\Tests\Http;
 
-use App\Shared\Tests\WebTestCase;
+use App\Tests\Support\WebTestCase;
 use App\Warehousing\Enum\StockReservationStatus;
 use App\Warehousing\Tests\DataFixtures\StockReservationEmptyTestFixture;
 use App\Warehousing\Tests\Helpers\StockReservationTestHelpers;

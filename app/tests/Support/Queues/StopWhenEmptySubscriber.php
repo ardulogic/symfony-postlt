@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Shared\Tests\Support;
+namespace App\Tests\Support\Queues;
 
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\Messenger\Event\WorkerRunningEvent;
@@ -14,7 +14,7 @@ class StopWhenEmptySubscriber implements EventSubscriberInterface
     public function onWorkerRunning(WorkerRunningEvent $event): void
     {
         if ($event->isWorkerIdle()) {
-            $event->getWorker()->stop();
+             $event->getWorker()->stop();
         }
     }
 }

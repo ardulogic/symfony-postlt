@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace App\Shared\Tests;
+namespace App\Tests\Support;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Liip\TestFixturesBundle\Services\DatabaseToolCollection;
