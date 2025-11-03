@@ -14,6 +14,7 @@ use App\Warehousing\Repository\WarehouseRepository;
 use App\Warehousing\Service\StockReservationService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -33,6 +34,24 @@ final class StockReservationController extends AbstractController
         private WarehouseRepository        $wareRepo,
     )
     {
+    }
+
+    public function list(Request $request): JsonResponse
+    {
+        $page = max(1, (int)$request->query->get('page', 1));
+        $perPage = min(max(1, (int)$request->query->get('per_page', 20)), 100);
+
+        [$items, $total] = $this->reservationRepo->list($page, $perPage);
+
+        return $this->json([
+            'data' => $items,
+            'meta' => [
+                'page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'total_pages' => (int)ceil($total / $perPage),
+            ],
+        ], Response::HTTP_OK);
     }
 
     public function read(string $number, StockReservationRepository $repository): JsonResponse

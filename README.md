@@ -357,6 +357,28 @@ All endpoints are prefixed with `/api`.
 **`GET /api/warehouses/stock/reservations/{number}`**  
 **Response:** `200 OK` with reservation details (includes lines, status, quantities)
 
+**List Reservations**
+**`GET /api/warehouses/stock/reservations?page=1&per_page=20`**  
+**Query Parameters:**
+- `page` (optional, default: 1) - Page number
+- `per_page` (optional, default: 20, max: 100) - Items per page
+
+**Response:** `200 OK` with paginated list
+```json
+{
+  "data": [
+    { "number": "ORD-001", "status": "RESERVED", "lines": [/* ... */] },
+    { "number": "ORD-002", "status": "RESERVED_PARTIAL", "lines": [/* ... */] }
+  ],
+  "meta": {
+    "page": 1,
+    "per_page": 20,
+    "total": 42,
+    "total_pages": 3
+  }
+}
+```
+
 **Cancel Reservation**
 **`PUT /api/warehouses/stock/reservations/{number}`**  
 **Response:** `202 Accepted`  
