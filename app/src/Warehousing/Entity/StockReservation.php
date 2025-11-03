@@ -28,6 +28,9 @@ class StockReservation
     #[ORM\OneToMany(mappedBy: 'stockReservation', targetEntity: StockReservationLine::class, cascade: ['persist'], orphanRemoval: true)]
     private iterable $lines;
 
+    #[ORM\Column(type: 'boolean', options: ['default' => false])]
+    private bool $reallocationLocked = false;
+
     public function getId(): ?string
     {
         return $this->id ?? null;
@@ -58,6 +61,16 @@ class StockReservation
     public function setLines(iterable $lines): void
     {
         $this->lines = $lines;
+    }
+
+    public function isReallocationLocked(): bool
+    {
+        return $this->reallocationLocked;
+    }
+
+    public function setReallocationLocked(bool $locked): void
+    {
+        $this->reallocationLocked = $locked;
     }
 
     public function recomputeStatus(): void
@@ -110,6 +123,9 @@ class StockReservation
 
         if ($totalItems === $reserved) {
             $this->status =             StockReservationStatus::RESERVED->value;
+
+            // Lock reallocation if fully reserved and not fractured across warehouses
+            $this->setReallocationLocked($this->isFullyReservedInSingleWarehouse());
             return;
         }
 
@@ -120,9 +136,33 @@ class StockReservation
 
         if ($reservedPartial > 0) {
             $this->status =             StockReservationStatus::RESERVED_PARTIAL->value;
+            $this->setReallocationLocked(false);
             return;
         }
 
+    }
+
+    private function isFullyReservedInSingleWarehouse(): bool
+    {
+        $warehouseId = null;
+        foreach ($this->getLines() as $line) {
+            // must be fully reserved and assigned to the same warehouse
+            if ($line->getStatus() !== StockReservationLineStatus::RESERVED) {
+                return false;
+            }
+            $currentWh = $line->getWarehouse();
+            if ($currentWh === null) {
+                return false;
+            }
+            $currentId = method_exists($currentWh, 'getId') ? $currentWh->getId() : spl_object_hash($currentWh);
+            if ($warehouseId === null) {
+                $warehouseId = $currentId;
+            } elseif ($warehouseId !== $currentId) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
 

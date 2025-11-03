@@ -47,6 +47,7 @@ final class StockReservationRepository extends ServiceEntityRepository
             ->leftJoin('l.warehouse', 'w')
             ->leftJoin('l.stockItem', 's')
             ->andWhere('r.status IN (:statuses)')
+            ->andWhere('COALESCE(r.reallocationLocked, false) = false')
             ->andWhere('l.productSku IN (:skus)')
             ->setParameter('statuses', $statusVals)
             ->setParameter('skus', $skus)

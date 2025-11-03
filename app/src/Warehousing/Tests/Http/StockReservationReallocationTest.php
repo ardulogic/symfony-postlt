@@ -193,4 +193,39 @@ final class StockReservationReallocationTest extends WebTestCase
         self::assertGreaterThanOrEqual(0, $line3['reserved']);
         self::assertLessThanOrEqual($line2['reserved'], $line3['reserved']);
     }
+
+    public function test_perfect_full_reservation_is_locked_and_skipped_by_reallocation(): void
+    {
+        $this->expectSuccess();
+
+        $sku = 'SKU-001';
+
+        // Create a reservation that should fully reserve at a single warehouse
+        $number = 'ORD-LOCKED-OK';
+        $this->createReservation($number, $sku, 1);
+
+        // Verify it is fully reserved and locked
+        $entity = $this->resRepo->findOneByNumber($number);
+        self::assertNotNull($entity);
+        self::assertTrue($entity->isReallocationLocked(), 'Reservation should be locked for reallocation');
+
+        $before = $this->readReservation($number);
+        $beforeMap = $this->lineMap($before);
+        $beforeWh = $beforeMap[$sku]['warehouse'];
+        $beforeReserved = $beforeMap[$sku]['reserved'];
+
+        // Trigger a reallocation run by creating and cancelling another reservation for the same SKU
+        $tmp = 'ORD-LOCKED-TMP';
+        $this->createReservation($tmp, $sku, 1);
+        self::assertSame(202, $this->cancelReservation($tmp));
+
+        // Ensure the original perfect reservation was not touched
+        $after = $this->readReservation($number);
+        $afterMap = $this->lineMap($after);
+        self::assertSame($beforeWh, $afterMap[$sku]['warehouse']);
+        self::assertSame($beforeReserved, $afterMap[$sku]['reserved']);
+
+        $entityAfter = $this->resRepo->findOneByNumber($number);
+        self::assertTrue($entityAfter->isReallocationLocked(), 'Reservation should remain locked for reallocation');
+    }
 }
