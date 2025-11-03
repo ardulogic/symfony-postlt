@@ -2,6 +2,7 @@
 
 namespace App\Warehousing\Tests\Http;
 
+use App\Shared\Tests\Support\TestQueueWorker;
 use App\Shared\Tests\WebTestCase;
 use App\Warehousing\Enum\StockReservationStatus;
 use App\Warehousing\Tests\DataFixtures\StockReservationEmptyTestFixture;
@@ -42,9 +43,11 @@ final class StockReservationReallocationTest extends WebTestCase
         self::assertSame(StockReservationStatus::RESERVED->value, $resBefore1['status']);
         self::assertSame(StockReservationStatus::RESERVED_PARTIAL->value, $resBefore2['status']);
 
-       // $this->client->disableReboot();
+       // Cancel the reservation
         self::assertSame(202, $this->cancelReservation('ORD-REALLOC-1'));
         $this->em->clear();
+
+        TestQueueWorker::doQueuedJobs($this->c);
 
         $resAfter1 = $this->readReservation('ORD-REALLOC-1');
         self::assertSame(StockReservationStatus::CANCELED->value, $resAfter1['status']);
@@ -73,6 +76,7 @@ final class StockReservationReallocationTest extends WebTestCase
         $reservedBefore = $mapBefore[$sku2]['reserved'];
 
         self::assertSame(202, $this->cancelReservation('ORD-UNREL-1'));
+        TestQueueWorker::doQueuedJobs($this->c);
 
         $res2After = $this->readReservation('ORD-UNREL-2');
         $mapAfter = $this->lineMap($res2After);
@@ -107,10 +111,13 @@ final class StockReservationReallocationTest extends WebTestCase
         $this->createReservation('ORD-STABLE-TMP', $sku, 1);
         $this->cancelReservation('ORD-STABLE-TMP');
 
+        TestQueueWorker::doQueuedJobs($this->c);
+
         $resAfter = $this->readReservation($order);
         $mapAfter = $this->lineMap($resAfter);
 
         self::assertSame(StockReservationStatus::RESERVED->value, $resAfter['status']);
+        self::assertEquals($mapBefore[$sku]['reserved'], $mapAfter[$sku]['reserved']);
         self::assertNotNull($mapAfter[$sku]['warehouse']);
     }
 
@@ -132,6 +139,7 @@ final class StockReservationReallocationTest extends WebTestCase
         $reserved3Before = $map3Before[$sku]['reserved'];
 
         self::assertSame(202, $this->cancelReservation('ORD-FIFO-1'));
+        TestQueueWorker::doQueuedJobs($this->c);
 
         $map2After = $this->lineMap($this->readReservation('ORD-FIFO-2'));
         $map3After = $this->lineMap($this->readReservation('ORD-FIFO-3'));
@@ -158,6 +166,7 @@ final class StockReservationReallocationTest extends WebTestCase
 
         $this->createReservation('ORD-STABLE-2-TMP', $sku, 1);
         self::assertSame(202, $this->cancelReservation('ORD-STABLE-2-TMP'));
+        TestQueueWorker::doQueuedJobs($this->c);
 
         $resAfter = $this->readReservation('ORD-STABLE-2');
         $mapAfter = $this->lineMap($resAfter);
@@ -180,6 +189,7 @@ final class StockReservationReallocationTest extends WebTestCase
         }
 
         self::assertSame(202, $this->cancelReservation('ORD-FIFO2-1'));
+        TestQueueWorker::doQueuedJobs($this->c);
 
         $res2 = $this->readReservation('ORD-FIFO2-2');
         $res3 = $this->readReservation('ORD-FIFO2-3');
@@ -212,6 +222,7 @@ final class StockReservationReallocationTest extends WebTestCase
         $tmp = 'ORD-LOCKED-TMP';
         $this->createReservation($tmp, $sku, 1);
         self::assertSame(202, $this->cancelReservation($tmp));
+        TestQueueWorker::doQueuedJobs($this->c);
 
         // Ensure the original perfect reservation was not touched
         $after = $this->lineMap($this->readReservation($number))[$sku];
