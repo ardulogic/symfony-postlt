@@ -18,7 +18,7 @@
         "symfony/console": "7.3.*",
         "symfony/dotenv": "7.3.*",
         "symfony/expression-language": "7.3.*",
-        "symfony/flex": "^2.8.2",
+        "symfony/flex": "^2.9.0",
         "symfony/framework-bundle": "7.3.*",
         "symfony/lock": "7.3.*",
         "symfony/messenger": "7.3.*",
