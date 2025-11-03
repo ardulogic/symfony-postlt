@@ -400,6 +400,28 @@ All endpoints are prefixed with `/api`.
 - `code` - Warehouse code (1-32 chars, alphanumeric)
 - `sku` - Product SKU (1-64 chars, alphanumeric)
 
+**List Stock Items**
+**`GET /api/warehouses/stock?page=1&per_page=20`**  
+**Query Parameters:**
+- `page` (optional, default: 1) - Page number
+- `per_page` (optional, default: 20, max: 100) - Items per page
+
+**Response:** `200 OK` with paginated list
+```json
+{
+  "data": [
+    { "warehouse": { "code": "WARE-EU-1" }, "productSku": "SKU-001", "onHandQty": 2, "reservedQty": 0 },
+    { "warehouse": { "code": "WARE-EU-2" }, "productSku": "SKU-003", "onHandQty": 1, "reservedQty": 0 }
+  ],
+  "meta": {
+    "page": 1,
+    "per_page": 20,
+    "total": 10,
+    "total_pages": 1
+  }
+}
+```
+
 **Receive Stock**
 **`POST /api/warehouses/{code}/stock/{sku}/receive`**
 ```json
