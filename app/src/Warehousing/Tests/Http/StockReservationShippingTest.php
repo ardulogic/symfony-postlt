@@ -6,7 +6,7 @@ namespace App\Warehousing\Tests\Http;
 use App\Shared\Tests\WebTestCase;
 use App\Warehousing\Enum\StockReservationStatus;
 use App\Warehousing\Tests\DataFixtures\StockReservationEmptyTestFixture;
-use App\Warehousing\Tests\StockReservationTestHelpers;
+use App\Warehousing\Tests\Helpers\StockReservationTestHelpers;
 
 final class StockReservationShippingTest extends WebTestCase
 {
