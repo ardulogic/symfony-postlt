@@ -6,6 +6,7 @@ use App\Warehousing\Entity\StockReservation;
 use App\Warehousing\Enum\StockReservationStatus;
 use App\Warehousing\Exceptions\StockReservationAlreadyCancelledException;
 use App\Warehousing\Messages\ReallocateStockJob;
+use App\Warehousing\Messages\StockReservationStatusChangedMessage;
 use App\Warehousing\Repository\StockItemRepository;
 use App\Warehousing\Repository\StockReservationRepository;
 use App\Warehousing\Service\Helpers\StockAllocator;
@@ -34,7 +35,7 @@ final class StockReservationService
     {
         // Wrap in transaction
         // we use this layer since the transaction could be much broader
-        return $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($reservation): StockReservation {
+        $savedReservation = $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($reservation): StockReservation {
             $this->allocator->allocateStockToReservationLines($reservation);
 
             $this->repo->create($reservation);
@@ -42,6 +43,10 @@ final class StockReservationService
             return $reservation;
         });
 
+        // Dispatch status changed message after creation
+        $this->dispatchStatusChangedMessage($savedReservation);
+
+        return $savedReservation;
     }
 
     public function cancel(StockReservation $reservation): void
@@ -51,14 +56,20 @@ final class StockReservationService
                 throw new StockReservationAlreadyCancelledException();
             }
 
-            $this->allocator->cancel($reservation);
+            $this->allocator->cancel($reservation); // This calls recomputeStatus() internally
 
             $this->repo->update($reservation);
 
             return  $reservation->getLines()->map(fn($l) => $l->getProductSku())->toArray();
         });
 
+        // Refresh entity to ensure we have the latest status
+        $this->em->refresh($reservation);
+        
         $this->queueStockReallocation($reservation->getId(), $affectedSkus);
+        
+        // Dispatch status changed message after cancellation
+        $this->dispatchStatusChangedMessage($reservation);
     }
 
     public function queueStockReallocation(string $id, array $skus): void
@@ -82,13 +93,38 @@ final class StockReservationService
 
     public function ship(StockReservation $reservation, bool $allowPartial = false): StockReservation
     {
-        return $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($reservation, $allowPartial): StockReservation {
+        $shippedReservation = $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($reservation, $allowPartial): StockReservation {
             $reservation = $this->shipper->shipReservation($reservation);
 
             $this->resRepo->update($reservation);
 
             return $reservation;
         });
+
+        // Dispatch status changed message after shipping
+        $this->dispatchStatusChangedMessage($shippedReservation);
+
+        return $shippedReservation;
+    }
+
+    private function dispatchStatusChangedMessage(StockReservation $reservation): void
+    {
+        $lines = [];
+        foreach ($reservation->getLines() as $line) {
+            $lines[] = [
+                'productSku' => $line->getProductSku(),
+                'qtyOrdered' => $line->getOrderedQty(),
+                'qtyReserved' => $line->getReservedQty(),
+                'qtyShipped' => $line->getShippedQty(),
+                'status' => $line->getStatus()->value,
+            ];
+        }
+
+        $this->bus->dispatch(new StockReservationStatusChangedMessage(
+            reservationNumber: $reservation->getNumber(),
+            status: $reservation->getStatus(),
+            lines: $lines,
+        ));
     }
 
 }

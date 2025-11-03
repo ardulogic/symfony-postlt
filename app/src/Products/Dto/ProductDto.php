@@ -13,7 +13,7 @@ final class ProductDto
     #[Assert\NotBlank(groups: ['create'])]
     #[Assert\Length(max: 64, groups: ['create','update'])]
     #[Assert\Regex(
-        pattern: '/^[A-Z0-9._-]+$/',
+        pattern: '/^[A-Z0-9._-]+$/i',
         message: 'SKU may contain A-Z, 0-9, dot, underscore, hyphen.',
         groups: ['create','update']
     )]

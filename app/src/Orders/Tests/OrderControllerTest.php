@@ -4,9 +4,11 @@ declare(strict_types=1);
 namespace App\Orders\Tests;
 
 use App\Orders\Entity\Order;
+use App\Orders\Messages\OrderCreatedMessage;
 use App\Orders\Repository\OrderRepository;
 use App\Orders\Tests\DataFixtures\OrderTestFixture;
 use App\Shared\Tests\WebTestCase;
+use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 final class OrderControllerTest extends WebTestCase
 {
@@ -160,6 +162,62 @@ final class OrderControllerTest extends WebTestCase
         );
 
         self::assertResponseStatusCodeSame(409);
+    }
+
+    public function test_create_dispatches_order_created_message(): void
+    {
+        $this->expectSuccess();
+
+        $number = 'ORD-MSG-TEST-001';
+        $payload = [
+            'number' => $number,
+            'lines'  => [
+                ['productSku' => 'SKU-001', 'qty' => 2],
+                ['productSku' => 'SKU-002', 'qty' => 1],
+            ],
+        ];
+
+        // Get the transport before creating the order
+        $transport = $this->c->get('messenger.transport.async');
+        self::assertInstanceOf(InMemoryTransport::class, $transport);
+
+        // Clear any existing messages
+        $transport->reset();
+
+        $this->client->request(
+            'POST',
+            $this->url('orders_create'),
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: json_encode($payload, JSON_THROW_ON_ERROR)
+        );
+
+        self::assertResponseStatusCodeSame(201);
+
+        // Verify order was created
+        $order = $this->repo->findOneByNumber($number);
+        self::assertInstanceOf(Order::class, $order);
+
+        // Verify message was dispatched
+        $sent = $transport->getSent();
+        self::assertCount(1, $sent, 'Exactly one OrderCreatedMessage should be dispatched');
+
+        $envelope = $sent[0];
+        $message = $envelope->getMessage();
+        
+        self::assertInstanceOf(OrderCreatedMessage::class, $message);
+        self::assertSame($number, $message->orderNumber);
+        self::assertCount(2, $message->lines);
+        
+        // Verify message content
+        self::assertSame('PENDING', $message->status, 'Order status should be PENDING when created');
+        
+        $line1 = $message->lines[0];
+        $line2 = $message->lines[1];
+        
+        self::assertSame('SKU-001', $line1['productSku']);
+        self::assertSame(2, $line1['qtyOrdered']);
+        self::assertSame('SKU-002', $line2['productSku']);
+        self::assertSame(1, $line2['qtyOrdered']);
     }
 
 

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace App\Orders\Entity;
 
-use App\Orders\Enum\OrderLineStatus;
+use App\Orders\Enum\OrderStatus;
 
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -23,7 +23,7 @@ class Order
     public string $number; // external order number
 
     #[ORM\Column(length: 32)]
-    private string $status = OrderLineStatus::PENDING->value;
+    private string $status = 'PENDING';
 
     #[ORM\OneToMany(mappedBy: 'order', targetEntity: OrderLine::class, cascade: ['persist'], orphanRemoval: true)]
     private iterable $lines;
@@ -58,6 +58,11 @@ class Order
     public function setLines(iterable $lines): void
     {
         $this->lines = $lines;
+    }
+
+    public function setStatus(OrderStatus $status): void
+    {
+        $this->status = $status->value;
     }
 
 }

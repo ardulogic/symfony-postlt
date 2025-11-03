@@ -5,21 +5,17 @@ namespace App\Warehousing\Tests\Http;
 use App\Shared\Tests\WebTestCase;
 use App\Warehousing\Enum\StockReservationLineStatus;
 use App\Warehousing\Enum\StockReservationStatus;
-use App\Warehousing\Repository\StockItemRepository;
-use App\Warehousing\Repository\StockReservationRepository;
 use App\Warehousing\Tests\DataFixtures\StockReservationEmptyTestFixture;
+use App\Warehousing\Tests\StockReservationTestHelpers;
 
 final class StockReservationReallocationTest extends WebTestCase
 {
-    private StockItemRepository $stockRepo;
-    private StockReservationRepository $resRepo;
+    use StockReservationTestHelpers;
 
     protected function setUp(): void
     {
         parent::setUp();
-
-        $this->resRepo = $this->c->get(StockReservationRepository::class);
-        $this->stockRepo = $this->c->get(StockItemRepository::class);
+        $this->setUpRepositories();
     }
 
     protected function getRequiredFixtures(): array
@@ -29,104 +25,39 @@ final class StockReservationReallocationTest extends WebTestCase
         ];
     }
 
-    /** Helpers copied from your other test (or extract to a trait) */
-    private function readReservationJson(string $number): array
-    {
-        $this->client->request('GET', $this->url('stock_reservations_read', ['number' => $number]));
-        self::assertResponseStatusCodeSame(200);
-        return json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
-    }
-
-    private function lineMap(array $json): array
-    {
-        $map = [];
-        foreach ($json['lines'] ?? [] as $l) {
-            $map[$l['productSku']] = [
-                'ordered' => (int)$l['orderedQty'],
-                'reserved' => (int)$l['reservedQty'],
-                'warehouse' => $l['warehouse']['code'] ?? null,
-                'status' => $l['status'] ?? null,
-            ];
-        }
-        return $map;
-    }
-
-    private function maxAvailable(string $sku): int
-    {
-        $items = $this->stockRepo->getBySkus([$sku]);
-        $max = 0;
-        foreach ($items as $stockItem) {
-            if ($stockItem->getProductSku() === $sku) {
-                $max = max($max, $stockItem->getAvailableQty());
-            }
-        }
-        return $max;
-    }
-
-    /**
-     * @throws \JsonException
-     */
     public function test_cancel_of_one_reservation_triggers_reallocation_of_another(): void
     {
         $this->expectSuccess();
 
-        // Ensure we have at least some stock for the SKU, but not enough for both orders fully
         $sku = 'SKU-001';
-        $maxAvailA = $this->maxAvailable($sku);
-        self::assertGreaterThan(0, $maxAvailA);
+        $avail = $this->maxAvailable($sku);
+        self::assertGreaterThan(0, $avail);
 
-        // A: small order that will fully reserve
-        $orderA = 'ORD-REALLOC-A';
-        $qtyA = $maxAvailA; // 1 or 2
+        $order1 = 'ORD-REALLOC-1';
+        $qty1 = $avail;
 
-        // Create A
-        $this->client->request(
-            'POST', $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['number' => $orderA, 'lines' => [['productSku' => $sku, 'qty' => $qtyA]]], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+        $this->createReservation($order1, $sku, $qty1);
 
-        // B: bigger order that will be partial initially (requires more than remaining after A)
-        $orderB = 'ORD-REALLOC-B';
-        $maxAvailB = $this->maxAvailable($sku);
-        self::assertGreaterThan(0, $maxAvailB);
-        $qtyB = $this->maxAvailable($sku) + 1;
+        $order2 = 'ORD-REALLOC-2';
+        $qty2 = $this->maxAvailable($sku) + 1;
 
-        // Create B (becomes partial)
-        $this->client->request(
-            'POST', $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['number' => $orderB, 'lines' => [['productSku' => $sku, 'qty' => $qtyB]]], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+        $this->createReservation($order2, $sku, $qty2);
 
-        $bBefore = $this->readReservationJson($orderB);
-        $bMapBefore = $this->lineMap($bBefore);
-        self::assertSame(StockReservationStatus::RESERVED_PARTIAL->value, $bBefore['status'] ?? null);
-        $reservedBefore = $bMapBefore[$sku]['reserved'];
+        $res2Before = $this->readReservation($order2);
+        $map2Before = $this->lineMap($res2Before);
+        self::assertSame(StockReservationStatus::RESERVED_PARTIAL->value, $res2Before['status']);
+        $reservedBefore = $map2Before[$sku]['reserved'];
 
-        // Cancel A → this should free stock; with sync messenger, reallocation happens now
-        $this->client->request(
-            'PUT', $this->url('stock_reservations_cancel', ['number' => $orderA]),
-            server: ['CONTENT_TYPE' => 'application/json']
-        );
-        self::assertResponseStatusCodeSame(202);
+        self::assertSame(202, $this->cancelReservation($order1));
 
-        // Read B again → reserved should have increased (ideally to full)
-        $bAfter = $this->readReservationJson($orderB);
-        $bMapAfter = $this->lineMap($bAfter);
+        $res2After = $this->readReservation($order2);
+        $map2After = $this->lineMap($res2After);
 
-        self::assertGreaterThan(
-            $reservedBefore,
-            $bMapAfter[$sku]['reserved'],
-            'Reallocation should increase reserved qty on the waiting reservation'
-        );
+        self::assertGreaterThan($reservedBefore, $map2After[$sku]['reserved']);
 
-        // If enough, it may become fully reserved now
-        if ($bMapAfter[$sku]['reserved'] >= $bMapAfter[$sku]['ordered']) {
-            self::assertSame(StockReservationStatus::RESERVED->value, $bAfter['status'] ?? null);
-            self::assertSame(StockReservationLineStatus::RESERVED->value, $bMapAfter[$sku]['status'] ?? null);
+        if ($map2After[$sku]['reserved'] >= $map2After[$sku]['ordered']) {
+            self::assertSame(StockReservationStatus::RESERVED->value, $res2After['status']);
+            self::assertSame(StockReservationLineStatus::RESERVED->value, $map2After[$sku]['status']);
         }
     }
 
@@ -134,66 +65,36 @@ final class StockReservationReallocationTest extends WebTestCase
     {
         $this->expectSuccess();
 
-        $skuA = 'SKU-001';
-        $skuB = 'SKU-003'; // present in fixtures, independent stock pools
+        $sku1 = 'SKU-001';
+        $sku2 = 'SKU-003';
 
-        // Create A on SKU-001 and B on SKU-003
-        $this->client->request('POST', $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['number' => 'ORD-UNREL-A', 'lines' => [['productSku' => $skuA, 'qty' => 1]]], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+        $this->createReservation('ORD-UNREL-1', $sku1, 1);
+        $this->createReservation('ORD-UNREL-2', $sku2, 999);
 
-        $this->client->request('POST', $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['number' => 'ORD-UNREL-B', 'lines' => [['productSku' => $skuB, 'qty' => 999]]], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+        $res2Before = $this->readReservation('ORD-UNREL-2');
+        $mapBefore = $this->lineMap($res2Before);
+        $reservedBefore = $mapBefore[$sku2]['reserved'];
 
-        $beforeB = $this->readReservationJson('ORD-UNREL-B');
-        $mapBefore = $this->lineMap($beforeB);
-        $reservedBefore = $mapBefore[$skuB]['reserved'];
+        self::assertSame(202, $this->cancelReservation('ORD-UNREL-1'));
 
-        // Cancel on different SKU
-        $this->client->request('PUT', $this->url('stock_reservations_cancel', ['number' => 'ORD-UNREL-A']),
-            server: ['CONTENT_TYPE' => 'application/json']
-        );
-        self::assertResponseStatusCodeSame(202);
-
-        $afterB = $this->readReservationJson('ORD-UNREL-B');
-        $mapAfter = $this->lineMap($afterB);
-        self::assertSame($reservedBefore, $mapAfter[$skuB]['reserved'], 'Unrelated cancel must not affect another SKU');
+        $res2After = $this->readReservation('ORD-UNREL-2');
+        $mapAfter = $this->lineMap($res2After);
+        self::assertSame($reservedBefore, $mapAfter[$sku2]['reserved']);
     }
 
-    /** Double cancel is idempotent: first 202, second 409/422/204 depending on your semantics */
     public function test_cancel_is_idempotent_and_does_not_reallocate_twice(): void
     {
         $this->expectSuccess();
 
         $sku = 'SKU-001';
-        $this->client->request('POST', $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['number' => 'ORD-IDEMP', 'lines' => [['productSku' => $sku, 'qty' => 1]]], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+        $this->createReservation('ORD-IDEMP', $sku, 1);
 
-        // First cancel works
-        $this->client->request('PUT', $this->url('stock_reservations_cancel', ['number' => 'ORD-IDEMP']),
-            server: ['CONTENT_TYPE' => 'application/json']
-        );
-        self::assertResponseStatusCodeSame(202);
+        self::assertSame(202, $this->cancelReservation('ORD-IDEMP'));
 
-        // Second cancel should not trigger anything; expect conflict or no-content
-        $this->client->request('PUT', $this->url('stock_reservations_cancel', ['number' => 'ORD-IDEMP']),
-            server: ['CONTENT_TYPE' => 'application/json']
-        );
-        self::assertTrue(
-            in_array($this->client->getResponse()->getStatusCode(), [204, 409, 422], true),
-            'Second cancel should be a no-op (204) or validation/conflict (409/422)'
-        );
+        $status = $this->cancelReservation('ORD-IDEMP');
+        self::assertContains($status, [204, 409, 422]);
     }
 
-    /** (Optional) sanity: reallocation doesn’t switch warehouse if already optimal single-warehouse allocation */
     public function test_reallocation_does_not_worsen_allocation(): void
     {
         $this->expectSuccess();
@@ -201,31 +102,18 @@ final class StockReservationReallocationTest extends WebTestCase
         $sku = 'SKU-001';
         $order = 'ORD-STABLE';
 
-        // Reserve B so that it’s fully satisfied from a single warehouse
-        $this->client->request('POST', $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['number' => $order, 'lines' => [['productSku' => $sku, 'qty' => 1]]], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+        $this->createReservation($order, $sku, 1);
 
-        $before = $this->readReservationJson($order);
-        $mapBefore = $this->lineMap($before);
-        $whBefore = $mapBefore[$sku]['warehouse'];
+        $resBefore = $this->readReservation($order);
+        $mapBefore = $this->lineMap($resBefore);
 
-        // Create & cancel some other order to trigger reallocation scans
-        $this->client->request('POST', $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['number' => 'ORD-STABLE-TMP', 'lines' => [['productSku' => $sku, 'qty' => 1]]], JSON_THROW_ON_ERROR)
-        );
-        $this->client->request('PUT', $this->url('stock_reservations_cancel', ['number' => 'ORD-STABLE-TMP']),
-            server: ['CONTENT_TYPE' => 'application/json']
-        );
+        $this->createReservation('ORD-STABLE-TMP', $sku, 1);
+        $this->cancelReservation('ORD-STABLE-TMP');
 
-        $after = $this->readReservationJson($order);
-        $mapAfter = $this->lineMap($after);
+        $resAfter = $this->readReservation($order);
+        $mapAfter = $this->lineMap($resAfter);
 
-        // It may legitimately change to a "better" single-warehouse, but should not break full reservation
-        self::assertSame(StockReservationStatus::RESERVED->value, $after['status'] ?? null);
+        self::assertSame(StockReservationStatus::RESERVED->value, $resAfter['status']);
         self::assertNotNull($mapAfter[$sku]['warehouse']);
     }
 
@@ -237,81 +125,49 @@ final class StockReservationReallocationTest extends WebTestCase
         $avail = $this->maxAvailable($sku);
         self::assertGreaterThan(1, $avail);
 
-        // A fully reserves everything (or almost everything)
-        $this->client->request('POST', $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['number' => 'ORD-FIFO-A', 'lines' => [['productSku' => $sku, 'qty' => $avail]]], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+        $this->createReservation('ORD-FIFO-1', $sku, $avail);
+        $this->createReservation('ORD-FIFO-2', $sku, $avail);
+        $this->createReservation('ORD-FIFO-3', $sku, $avail);
 
-        // B and C both wait for stock (partial or zero)
-        $this->client->request('POST', $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['number' => 'ORD-FIFO-B', 'lines' => [['productSku' => $sku, 'qty' => $avail]]], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+        $map2Before = $this->lineMap($this->readReservation('ORD-FIFO-2'));
+        $map3Before = $this->lineMap($this->readReservation('ORD-FIFO-3'));
+        $reserved2Before = $map2Before[$sku]['reserved'];
+        $reserved3Before = $map3Before[$sku]['reserved'];
 
-        $this->client->request('POST', $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['number' => 'ORD-FIFO-C', 'lines' => [['productSku' => $sku, 'qty' => $avail]]], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+        self::assertSame(202, $this->cancelReservation('ORD-FIFO-1'));
 
-        $bBefore = $this->lineMap($this->readReservationJson('ORD-FIFO-B'))[$sku]['reserved'];
-        $cBefore = $this->lineMap($this->readReservationJson('ORD-FIFO-C'))[$sku]['reserved'];
+        $map2After = $this->lineMap($this->readReservation('ORD-FIFO-2'));
+        $map3After = $this->lineMap($this->readReservation('ORD-FIFO-3'));
+        $reserved2After = $map2After[$sku]['reserved'];
+        $reserved3After = $map3After[$sku]['reserved'];
 
-        // Cancel A → frees stock; B should gain before C
-        $this->client->request('PUT', $this->url('stock_reservations_cancel', ['number' => 'ORD-FIFO-A']),
-            server: ['CONTENT_TYPE' => 'application/json']
-        );
-        self::assertResponseStatusCodeSame(202);
-
-        $bAfter = $this->lineMap($this->readReservationJson('ORD-FIFO-B'))[$sku]['reserved'];
-        $cAfter = $this->lineMap($this->readReservationJson('ORD-FIFO-C'))[$sku]['reserved'];
-
-        self::assertGreaterThan($bBefore, $bAfter, 'B must gain first');
-        self::assertGreaterThanOrEqual($cBefore, $cAfter, 'C should not lose reservation');
-        self::assertGreaterThanOrEqual($bAfter - $bBefore, $cAfter - $cBefore, 'C must not gain more than B');
+        self::assertGreaterThan($reserved2Before, $reserved2After);
+        self::assertGreaterThanOrEqual($reserved3Before, $reserved3After);
+        self::assertGreaterThanOrEqual($reserved2After - $reserved2Before, $reserved3After - $reserved3Before);
     }
 
-    /** If a single-warehouse full allocation exists, later scans must not degrade it */
     public function test_reallocation_keeps_single_warehouse_full_reservation_intact(): void
     {
         $this->expectSuccess();
 
         $sku = 'SKU-001';
 
-        // Reserve fully
-        $this->client->request('POST', $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['number' => 'ORD-STABLE-2', 'lines' => [['productSku' => $sku, 'qty' => 1]]], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+        $this->createReservation('ORD-STABLE-2', $sku, 1);
 
-        $before = $this->readReservationJson('ORD-STABLE-2');
-        $mapB = $this->lineMap($before);
-        self::assertSame(StockReservationStatus::RESERVED->value, $before['status']);
-        $wh = $mapB[$sku]['warehouse'];
-        self::assertNotNull($wh);
+        $resBefore = $this->readReservation('ORD-STABLE-2');
+        $mapBefore = $this->lineMap($resBefore);
+        self::assertSame(StockReservationStatus::RESERVED->value, $resBefore['status']);
+        self::assertNotNull($mapBefore[$sku]['warehouse']);
 
-        // Create & cancel another order to provoke reallocation scanning
-        $this->client->request('POST', $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['number' => 'ORD-STABLE-2-TMP', 'lines' => [['productSku' => $sku, 'qty' => 1]]], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
-        $this->client->request('PUT', $this->url('stock_reservations_cancel', ['number' => 'ORD-STABLE-2-TMP']),
-            server: ['CONTENT_TYPE' => 'application/json']
-        );
-        self::assertResponseStatusCodeSame(202);
+        $this->createReservation('ORD-STABLE-2-TMP', $sku, 1);
+        self::assertSame(202, $this->cancelReservation('ORD-STABLE-2-TMP'));
 
-        $after = $this->readReservationJson('ORD-STABLE-2');
-        $mapA = $this->lineMap($after);
-        self::assertSame(StockReservationStatus::RESERVED->value, $after['status']);
-        self::assertNotNull($mapA[$sku]['warehouse']);
+        $resAfter = $this->readReservation('ORD-STABLE-2');
+        $mapAfter = $this->lineMap($resAfter);
+        self::assertSame(StockReservationStatus::RESERVED->value, $resAfter['status']);
+        self::assertNotNull($mapAfter[$sku]['warehouse']);
     }
 
-    /** Stronger FIFO: earlier waiter achieves full before later waiter gets more than it */
     public function test_fifo_full_first_then_next_gets_leftovers(): void
     {
         $this->expectSuccess();
@@ -320,36 +176,21 @@ final class StockReservationReallocationTest extends WebTestCase
         $avail = $this->maxAvailable($sku);
         self::assertGreaterThanOrEqual(2, $avail, 'Need at least 2 for this scenario');
 
-        // A occupies all available
-        $this->client->request('POST', $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['number' => 'ORD-FIFO2-A', 'lines' => [['productSku' => $sku, 'qty' => $avail]]], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+        $this->createReservation('ORD-FIFO2-1', $sku, $avail);
 
-        // B and C both want 1
-        foreach (['ORD-FIFO2-B', 'ORD-FIFO2-C'] as $n) {
-            $this->client->request('POST', $this->url('stock_reservations_create'),
-                server: ['CONTENT_TYPE' => 'application/json'],
-                content: json_encode(['number' => $n, 'lines' => [['productSku' => $sku, 'qty' => 1]]], JSON_THROW_ON_ERROR)
-            );
-            self::assertResponseStatusCodeSame(201);
+        foreach (['ORD-FIFO2-2', 'ORD-FIFO2-3'] as $number) {
+            $this->createReservation($number, $sku, 1);
         }
 
-        // Cancel A; freed qty = $avail
-        $this->client->request('PUT', $this->url('stock_reservations_cancel', ['number' => 'ORD-FIFO2-A']),
-            server: ['CONTENT_TYPE' => 'application/json']
-        );
-        self::assertResponseStatusCodeSame(202);
+        self::assertSame(202, $this->cancelReservation('ORD-FIFO2-1'));
 
-        $b = $this->readReservationJson('ORD-FIFO2-B');
-        $c = $this->readReservationJson('ORD-FIFO2-C');
-        $mb = $this->lineMap($b)[$sku];
-        $mc = $this->lineMap($c)[$sku];
+        $res2 = $this->readReservation('ORD-FIFO2-2');
+        $res3 = $this->readReservation('ORD-FIFO2-3');
+        $line2 = $this->lineMap($res2)[$sku];
+        $line3 = $this->lineMap($res3)[$sku];
 
-        // B should be full first; C should not exceed B
-        self::assertSame($mb['ordered'], $mb['reserved'], 'B should be fully reserved first');
-        self::assertGreaterThanOrEqual(0, $mc['reserved']);
-        self::assertLessThanOrEqual($mb['reserved'], $mc['reserved'], 'C must not get more than B at this point');
+        self::assertSame($line2['ordered'], $line2['reserved']);
+        self::assertGreaterThanOrEqual(0, $line3['reserved']);
+        self::assertLessThanOrEqual($line2['reserved'], $line3['reserved']);
     }
 }

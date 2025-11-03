@@ -15,7 +15,7 @@ final class WarehouseDto
     #[Assert\NotBlank(groups: ['create'])]
     #[Assert\Length(max: 32, groups: ['create', 'update'])]
     #[Assert\Regex(
-        pattern: '/^[A-Z0-9._-]+$/',
+        pattern: '/^[A-Z0-9._-]+$/i',
         message: 'Code may contain A-Z, 0-9, dot, underscore, hyphen.',
         groups: ['create', 'update']
     )]

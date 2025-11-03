@@ -3,8 +3,10 @@
 namespace App\Orders\Service;
 
 use App\Orders\Entity\Order;
+use App\Orders\Messages\OrderCreatedMessage;
 use App\Orders\Repository\OrderRepository;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 final class OrderService
@@ -13,6 +15,7 @@ final class OrderService
         private EntityManagerInterface $em,
         private OrderRepository      $repo,
         private ValidatorInterface     $validator,
+        private MessageBusInterface    $bus,
     )
     {
     }
@@ -21,12 +24,33 @@ final class OrderService
     {
         // Wrap in transaction
         // we use this layer since the transaction could be much broader
-        return $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($order): Order {
+        $savedOrder = $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($order): Order {
             $this->repo->create($order);
 
             return $order;
         });
 
+        // Dispatch message after successful creation
+        $this->dispatchOrderCreatedMessage($savedOrder);
+
+        return $savedOrder;
+    }
+
+    private function dispatchOrderCreatedMessage(Order $order): void
+    {
+        $lines = [];
+        foreach ($order->getLines() as $line) {
+            $lines[] = [
+                'productSku' => $line->getProductSku(),
+                'qtyOrdered' => $line->getQtyOrdered(),
+            ];
+        }
+
+        $this->bus->dispatch(new OrderCreatedMessage(
+            orderNumber: $order->getNumber(),
+            status: $order->getStatus(),
+            lines: $lines,
+        ));
     }
 
     public function update(Order $order)

@@ -7,6 +7,8 @@ products_read:
     path: products/{sku}
     controller: App\Products\Http\ProductController::read
     methods: [ GET ]
+    requirements:
+        sku: '(?-i)[A-Z0-9._-]{1,64}'
 
 products_list:
     path: products
@@ -17,9 +19,13 @@ products_update:
     path: products/{sku}
     controller: App\Products\Http\ProductController::update
     methods: [PUT]
+    requirements:
+        sku: '(?-i)[A-Z0-9._-]{1,64}'
 
 products_delete:
     path: products/{sku}
     controller: App\Products\Http\ProductController::delete
     methods: [ DELETE ]
+    requirements:
+        sku: '(?-i)[A-Z0-9._-]{1,64}'
 

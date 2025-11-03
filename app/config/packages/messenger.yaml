@@ -10,11 +10,13 @@ framework:
             # sync: 'sync://'
 
         routing:
-        # Route your messages to the transports
-        # 'App\Message\YourMessage': async
+            # Route your messages to the transports
+            'App\Orders\Messages\OrderCreatedMessage': async
+            'App\Warehousing\Messages\StockReservationStatusChangedMessage': async
+            'App\Warehousing\Messages\ReallocateStockJob': async
 
 when@test:
     framework:
-        messenger: # We execute jobs in sync
+        messenger:
             transports:
-                async: 'sync://'
+                async: 'in-memory://'

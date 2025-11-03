@@ -2,6 +2,8 @@ orders_read:
     path: /orders/{number}
     controller: App\Orders\Http\OrderController::read
     methods: [GET]
+    requirements:
+        number: '(?-i)[A-Z0-9._-]{1,32}'
 
 orders_create:
     path: /orders/create

@@ -5,8 +5,10 @@ namespace App\Warehousing\Tests\Http;
 
 use App\Shared\Tests\WebTestCase;
 use App\Warehousing\Entity\StockReservation;
-use App\Warehousing\Tests\DataFixtures\StockReservationTestFixture;
+use App\Warehousing\Messages\StockReservationStatusChangedMessage;
 use App\Warehousing\Repository\StockReservationRepository;
+use App\Warehousing\Tests\DataFixtures\StockReservationTestFixture;
+use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 final class StockReservationControllerTest extends WebTestCase
 {
@@ -155,6 +157,175 @@ final class StockReservationControllerTest extends WebTestCase
         self::assertResponseStatusCodeSame(409);
     }
 
+    public function test_create_dispatches_status_changed_message(): void
+    {
+        $this->expectSuccess();
+
+        $number = 'ORD-MSG-CREATE-001';
+        $payload = [
+            'number' => $number,
+            'lines' => [
+                ['productSku' => 'SKU-001', 'qty' => 2],
+            ],
+        ];
+
+        // Get the transport before creating the reservation
+        $transport = $this->c->get('messenger.transport.async');
+        self::assertInstanceOf(InMemoryTransport::class, $transport);
+
+        // Clear any existing messages
+        $transport->reset();
+
+        $this->client->request(
+            'POST',
+            $this->url('stock_reservations_create'),
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: json_encode($payload, JSON_THROW_ON_ERROR)
+        );
+
+        self::assertResponseStatusCodeSame(201);
+
+        // Verify reservation was created
+        $reservation = $this->repo->findOneByNumber($number);
+        self::assertInstanceOf(StockReservation::class, $reservation);
+
+        // Verify message was dispatched
+        $sent = $transport->getSent();
+        self::assertCount(1, $sent, 'Exactly one StockReservationStatusChangedMessage should be dispatched');
+
+        $envelope = $sent[0];
+        $message = $envelope->getMessage();
+
+        self::assertInstanceOf(StockReservationStatusChangedMessage::class, $message);
+        self::assertSame($number, $message->reservationNumber);
+        self::assertNotEmpty($message->status, 'Status should be set');
+        // Status could be RESERVED, RESERVED_PARTIAL, or OUT_OF_STOCK depending on stock availability
+        self::assertContains($message->status, ['RESERVED', 'RESERVED_PARTIAL', 'OUT_OF_STOCK', 'PENDING']);
+        
+        // Verify lines data is included
+        self::assertIsArray($message->lines);
+        self::assertCount(1, $message->lines);
+        $line = $message->lines[0];
+        self::assertSame('SKU-001', $line['productSku']);
+        self::assertArrayHasKey('qtyOrdered', $line);
+        self::assertArrayHasKey('qtyReserved', $line);
+        self::assertArrayHasKey('qtyShipped', $line);
+        self::assertArrayHasKey('status', $line);
+    }
+
+    public function test_cancel_dispatches_status_changed_message(): void
+    {
+        $this->expectSuccess();
+
+        $number = 'ORD-MSG-CANCEL-001';
+        $payload = [
+            'number' => $number,
+            'lines' => [
+                ['productSku' => 'SKU-001', 'qty' => 1],
+            ],
+        ];
+
+        // Create a reservation first
+        $this->client->request(
+            'POST',
+            $this->url('stock_reservations_create'),
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: json_encode($payload, JSON_THROW_ON_ERROR)
+        );
+        self::assertResponseStatusCodeSame(201);
+
+        // Get the transport and clear messages from creation
+        $transport = $this->c->get('messenger.transport.async');
+        self::assertInstanceOf(InMemoryTransport::class, $transport);
+        $transport->reset();
+
+        // Cancel the reservation
+        $this->client->request(
+            'PUT',
+            $this->url('stock_reservations_cancel', ['number' => $number]),
+            server: ['CONTENT_TYPE' => 'application/json']
+        );
+
+        self::assertResponseStatusCodeSame(202);
+
+        // Verify message was dispatched
+        $sent = $transport->getSent();
+        self::assertCount(1, $sent, 'Exactly one StockReservationStatusChangedMessage should be dispatched on cancel');
+
+        $envelope = $sent[0];
+        $message = $envelope->getMessage();
+
+        self::assertInstanceOf(StockReservationStatusChangedMessage::class, $message);
+        self::assertSame($number, $message->reservationNumber);
+        self::assertSame('CANCELED', $message->status);
+        
+        // Verify lines data is included
+        self::assertIsArray($message->lines);
+        self::assertCount(1, $message->lines);
+        $line = $message->lines[0];
+        self::assertSame('SKU-001', $line['productSku']);
+        self::assertArrayHasKey('qtyOrdered', $line);
+        self::assertArrayHasKey('qtyReserved', $line);
+        self::assertArrayHasKey('qtyShipped', $line);
+        self::assertArrayHasKey('status', $line);
+    }
+
+    public function test_ship_dispatches_status_changed_message(): void
+    {
+        $this->expectSuccess();
+
+        $number = 'ORD-MSG-SHIP-001';
+        $payload = [
+            'number' => $number,
+            'lines' => [
+                ['productSku' => 'SKU-001', 'qty' => 1],
+            ],
+        ];
+
+        // Create a reservation first
+        $this->client->request(
+            'POST',
+            $this->url('stock_reservations_create'),
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: json_encode($payload, JSON_THROW_ON_ERROR)
+        );
+        self::assertResponseStatusCodeSame(201);
+
+        // Get the transport and clear messages from creation
+        $transport = $this->c->get('messenger.transport.async');
+        self::assertInstanceOf(InMemoryTransport::class, $transport);
+        $transport->reset();
+
+        // Ship the reservation
+        $this->client->request(
+            'POST',
+            $this->url('stock_reservations_ship', ['number' => $number]),
+            server: ['CONTENT_TYPE' => 'application/json']
+        );
+
+        self::assertResponseStatusCodeSame(202);
+
+        // Verify message was dispatched
+        $sent = $transport->getSent();
+        self::assertCount(1, $sent, 'Exactly one StockReservationStatusChangedMessage should be dispatched on ship');
+
+        $envelope = $sent[0];
+        $message = $envelope->getMessage();
+
+        self::assertInstanceOf(StockReservationStatusChangedMessage::class, $message);
+        self::assertSame($number, $message->reservationNumber);
+        self::assertSame('SHIPPED', $message->status);
+        
+        // Verify lines data is included
+        self::assertIsArray($message->lines);
+        self::assertCount(1, $message->lines);
+        $line = $message->lines[0];
+        self::assertSame('SKU-001', $line['productSku']);
+        self::assertArrayHasKey('qtyOrdered', $line);
+        self::assertArrayHasKey('qtyReserved', $line);
+        self::assertArrayHasKey('qtyShipped', $line);
+        self::assertArrayHasKey('status', $line);
+    }
 
     /**
      * Helper for making sure fixture data exists

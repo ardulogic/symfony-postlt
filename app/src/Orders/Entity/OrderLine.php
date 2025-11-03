@@ -102,6 +102,32 @@ class OrderLine
         $this->status = OrderLineStatus::CANCELED->value;
     }
 
+    /**
+     * Direct setter for qtyReserved from warehousing (no status recomputation)
+     */
+    public function setQtyReserved(int $qty): void
+    {
+        if ($qty < 0) throw new \InvalidArgumentException('qtyReserved must be zero or positive');
+        $this->qtyReserved = $qty;
+    }
+
+    /**
+     * Direct setter for qtyShipped from warehousing (no status recomputation)
+     */
+    public function setQtyShipped(int $qty): void
+    {
+        if ($qty < 0) throw new \InvalidArgumentException('qtyShipped must be zero or positive');
+        $this->qtyShipped = $qty;
+    }
+
+    /**
+     * Direct setter for status from warehousing (no recomputation)
+     */
+    public function setStatus(OrderLineStatus $status): void
+    {
+        $this->status = $status->value;
+    }
+
     private function recomputeStatus(): void
     {
         if ($this->status === OrderLineStatus::CANCELED->value) return;

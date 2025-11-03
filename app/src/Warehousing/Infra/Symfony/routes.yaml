@@ -10,6 +10,8 @@ warehouses_read:
     path: warehouses/{code}
     controller: App\Warehousing\Http\WarehouseController::read
     methods: [ GET ]
+    requirements:
+        code: '(?-i)[A-Z0-9._-]{1,32}'
 
 warehouses_list:
     path: warehouses
@@ -20,11 +22,15 @@ warehouses_update:
     path: warehouses/{code}
     controller: App\Warehousing\Http\WarehouseController::update
     methods: [PUT]
+    requirements:
+        code: '(?-i)[A-Z0-9._-]{1,32}'
 
 warehouses_delete:
     path: warehouses/{code}
     controller: App\Warehousing\Http\WarehouseController::delete
     methods: [ DELETE ]
+    requirements:
+        code: '(?-i)[A-Z0-9._-]{1,32}'
 
 
 stock_items_read:
@@ -48,8 +54,7 @@ stock_reservations_read:
     controller: App\Warehousing\Http\StockReservationController::read
     methods: [ GET ]
     requirements:
-        code: '(?-i)[A-Z0-9._-]{1,32}'
-        number: '(?-i)[A-Z0-9._-]{1,64}'
+        number: '(?-i)[A-Z0-9._-]{1,32}'
 
 stock_reservations_create:
     path: warehouses/stock/reservations
@@ -61,11 +66,11 @@ stock_reservations_ship:
     controller: App\Warehousing\Http\StockReservationController::ship
     methods: [ POST ]
     requirements:
-        number: '(?-i)[A-Z0-9._-]{1,64}'
+        number: '(?-i)[A-Z0-9._-]{1,32}'
 
 stock_reservations_cancel:
     path: warehouses/stock/reservations/{number}
     controller: App\Warehousing\Http\StockReservationController::cancel
     methods: [ PUT ]
     requirements:
-        number: '(?-i)[A-Z0-9._-]{1,64}'
+        number: '(?-i)[A-Z0-9._-]{1,32}'
