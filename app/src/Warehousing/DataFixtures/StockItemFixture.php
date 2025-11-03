@@ -27,10 +27,15 @@ final class StockItemFixture extends Fixture implements FixtureGroupInterface, D
         // Small, easy-to-debug quantities
         // [warehouse_code, sku, qty]
         $seed = [
-            ['WARE-EU-1', 'SKU-001', 2],
+            ['WARE-EU-1', 'SKU-001', 1],
             ['WARE-EU-1', 'SKU-002', 1],
-            ['WARE-EU-2', 'SKU-001', 1],
-            ['WARE-EU-2', 'SKU-003', 1],
+            ['WARE-EU-1', 'SKU-003', 1],
+            ['WARE-EU-2', 'SKU-001', 2],
+            ['WARE-EU-2', 'SKU-002', 2],
+            ['WARE-EU-2', 'SKU-003', 2],
+            ['WARE-EU-3', 'SKU-001', 3],
+            ['WARE-EU-3', 'SKU-002', 3],
+            ['WARE-EU-3', 'SKU-003', 3],
         ];
 
         $whRepo = $om->getRepository(Warehouse::class);
