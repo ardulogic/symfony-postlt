@@ -41,6 +41,11 @@ stock_items_read:
         code: '(?-i)[A-Z0-9._-]{1,32}'
         sku: '(?-i)[A-Z0-9._-]{1,64}'
 
+stock_items_list:
+    path: warehouses/stock
+    controller: App\Warehousing\Http\StockItemController::list
+    methods: [ GET ]
+
 stock_items_receive:
     path: warehouses/{code}/stock/{sku}/receive
     controller: App\Warehousing\Http\StockItemController::receive

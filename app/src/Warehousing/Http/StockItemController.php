@@ -12,6 +12,7 @@ use App\Warehousing\Service\StockItemService;
 use App\Warehousing\Service\WarehouseService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -30,6 +31,24 @@ final class StockItemController extends AbstractController
         private WarehouseRepository $warehouseRepo,
     )
     {
+    }
+
+    public function list(Request $request, StockItemRepository $repository): JsonResponse
+    {
+        $page = max(1, (int)$request->query->get('page', 1));
+        $perPage = min(max(1, (int)$request->query->get('per_page', 20)), 100);
+
+        [$items, $total] = $repository->list($page, $perPage);
+
+        return $this->json([
+            'data' => $items,
+            'meta' => [
+                'page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'total_pages' => (int)ceil($total / $perPage),
+            ],
+        ], Response::HTTP_OK);
     }
 
     public function read(string $code, string $sku, StockItemRepository $repository): JsonResponse
