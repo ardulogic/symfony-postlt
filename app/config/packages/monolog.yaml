@@ -1,7 +1,16 @@
 monolog:
     channels:
-        - deprecation # Deprecations are logged in the dedicated "deprecation" channel when it exists
+        ['deprecation', 'allocation'] # Deprecations are logged in the dedicated "deprecation" channel when it exists
 
+    handlers:
+        allocation_file:
+            type: stream
+            # -> logs/<env>/allocation.log
+            path: "%kernel.logs_dir%/%kernel.environment%/stock_reallocation.log"
+            level: debug
+            channels: ['allocation']   # only logs sent to this channel
+#            bubble: true
+            formatter: 'monolog.formatter.allocation_pretty_json'
 when@dev:
     monolog:
         handlers:
@@ -43,6 +52,7 @@ when@test:
                 level: debug
                 max_files: 7
                 channels: [ 'doctrine' ]
+
 
 when@prod:
     monolog:

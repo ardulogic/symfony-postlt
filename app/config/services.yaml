@@ -28,3 +28,13 @@ services:
     _instanceof:
         Doctrine\Bundle\FixturesBundle\Fixture:
             tags: ['doctrine.fixture.orm']
+    monolog.formatter.allocation_pretty_json:
+        class: Monolog\Formatter\JsonFormatter
+        arguments:
+            $batchMode: !php/const Monolog\Formatter\JsonFormatter::BATCH_MODE_JSON
+            $appendNewline: true
+            $ignoreEmptyContextAndExtra: false
+        calls:
+            - [addJsonEncodeOption, [!php/const JSON_PRETTY_PRINT]]
+            - [addJsonEncodeOption, [!php/const JSON_UNESCAPED_SLASHES]]
+            - [addJsonEncodeOption, [!php/const JSON_UNESCAPED_UNICODE]]
