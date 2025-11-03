@@ -33,31 +33,20 @@ final class StockReservationReallocationTest extends WebTestCase
         $avail = $this->maxAvailable($sku);
         self::assertGreaterThan(0, $avail);
 
-        $order1 = 'ORD-REALLOC-1';
-        $qty1 = $avail;
+        $this->createReservation('ORD-REALLOC-1', $sku, $avail);
+        $this->createReservation('ORD-REALLOC-2', $sku, $this->maxAvailable($sku) + 1);
 
-        $this->createReservation($order1, $sku, $qty1);
+        $before = $this->lineMap($this->readReservation('ORD-REALLOC-2'))[$sku];
+        self::assertSame(StockReservationStatus::RESERVED_PARTIAL->value, $this->readReservation('ORD-REALLOC-2')['status']);
 
-        $order2 = 'ORD-REALLOC-2';
-        $qty2 = $this->maxAvailable($sku) + 1;
+        self::assertSame(202, $this->cancelReservation('ORD-REALLOC-1'));
 
-        $this->createReservation($order2, $sku, $qty2);
+        $after = $this->lineMap($this->readReservation('ORD-REALLOC-2'))[$sku];
+        self::assertGreaterThan($before['reserved'], $after['reserved']);
 
-        $res2Before = $this->readReservation($order2);
-        $map2Before = $this->lineMap($res2Before);
-        self::assertSame(StockReservationStatus::RESERVED_PARTIAL->value, $res2Before['status']);
-        $reservedBefore = $map2Before[$sku]['reserved'];
-
-        self::assertSame(202, $this->cancelReservation($order1));
-
-        $res2After = $this->readReservation($order2);
-        $map2After = $this->lineMap($res2After);
-
-        self::assertGreaterThan($reservedBefore, $map2After[$sku]['reserved']);
-
-        if ($map2After[$sku]['reserved'] >= $map2After[$sku]['ordered']) {
-            self::assertSame(StockReservationStatus::RESERVED->value, $res2After['status']);
-            self::assertSame(StockReservationLineStatus::RESERVED->value, $map2After[$sku]['status']);
+        if ($after['reserved'] >= $after['ordered']) {
+            self::assertSame(StockReservationStatus::RESERVED->value, $this->readReservation('ORD-REALLOC-2')['status']);
+            self::assertSame(StockReservationLineStatus::RESERVED->value, $after['status']);
         }
     }
 
@@ -209,10 +198,7 @@ final class StockReservationReallocationTest extends WebTestCase
         self::assertNotNull($entity);
         self::assertTrue($entity->isReallocationLocked(), 'Reservation should be locked for reallocation');
 
-        $before = $this->readReservation($number);
-        $beforeMap = $this->lineMap($before);
-        $beforeWh = $beforeMap[$sku]['warehouse'];
-        $beforeReserved = $beforeMap[$sku]['reserved'];
+        $before = $this->lineMap($this->readReservation($number))[$sku];
 
         // Trigger a reallocation run by creating and cancelling another reservation for the same SKU
         $tmp = 'ORD-LOCKED-TMP';
@@ -220,12 +206,10 @@ final class StockReservationReallocationTest extends WebTestCase
         self::assertSame(202, $this->cancelReservation($tmp));
 
         // Ensure the original perfect reservation was not touched
-        $after = $this->readReservation($number);
-        $afterMap = $this->lineMap($after);
-        self::assertSame($beforeWh, $afterMap[$sku]['warehouse']);
-        self::assertSame($beforeReserved, $afterMap[$sku]['reserved']);
+        $after = $this->lineMap($this->readReservation($number))[$sku];
+        self::assertSame($before['warehouse'], $after['warehouse']);
+        self::assertSame($before['reserved'], $after['reserved']);
 
-        $entityAfter = $this->resRepo->findOneByNumber($number);
-        self::assertTrue($entityAfter->isReallocationLocked(), 'Reservation should remain locked for reallocation');
+        self::assertTrue($this->resRepo->findOneByNumber($number)->isReallocationLocked(), 'Reservation should remain locked for reallocation');
     }
 }
