@@ -4,8 +4,8 @@ framework:
         # failure_transport: failed
 
         transports:
-            # https://symfony.com/doc/current/messenger.html#transport-configuration
-            async: '%env(MESSENGER_TRANSPORT_DSN)%'
+            # Default to Doctrine transport (DB queue)
+            async: 'doctrine://default'
             # failed: 'doctrine://default?queue_name=failed'
             # sync: 'sync://'
 

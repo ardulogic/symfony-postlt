@@ -39,16 +39,16 @@ final class OrderControllerTest extends WebTestCase
     public function test_read_payload_includes_lines_without_backref(): void
     {
         $this->expectSuccess();
-        $number = 'ORD-TEST-001';
-        $this->requireOrder($number);
+        $orderNumber = 'ORD-TEST-001';
+        $this->requireOrder($orderNumber);
 
-        $this->client->request('GET', $this->url('orders_read', ['number' => $number]));
+        $this->client->request('GET', $this->url('orders_read', ['number' => $orderNumber]));
 
         self::assertResponseStatusCodeSame(200);
 
         $json = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($json);
-        self::assertSame($number, $json['number'] ?? null);
+        self::assertSame($orderNumber, $json['number'] ?? null);
 
         // Lines should be present and an array (fixture has 2)
         self::assertArrayHasKey('lines', $json);
@@ -82,9 +82,9 @@ final class OrderControllerTest extends WebTestCase
     {
         $this->expectSuccess();
 
-        $number = 'ORD-NEW-001';
+        $orderNumber = 'ORD-NEW-001';
         $payload = [
-            'number' => $number,
+            'number' => $orderNumber,
             'lines'  => [
                 ['productSku' => 'SKU-001', 'qty' => 2],
                 ['productSku' => 'SKU-002', 'qty' => 1],
@@ -92,7 +92,7 @@ final class OrderControllerTest extends WebTestCase
         ];
 
         $createUrl = $this->url('orders_create');
-        $readUrl   = $this->url('orders_read', ['number' => $number]);
+        $readUrl   = $this->url('orders_read', ['number' => $orderNumber]);
 
         $this->client->request(
             'POST',
@@ -104,15 +104,18 @@ final class OrderControllerTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
 
         $location = $this->client->getResponse()->headers->get('Location');
-        self::assertSame(
-            $this->url('orders_read', ['number' => $number]),           // relative path
-            parse_url($location, PHP_URL_PATH)                          // actual path from absolute URL
-        );
+        self::assertSame($readUrl, parse_url($location, PHP_URL_PATH));
 
-        $saved = $this->repo->findOneByNumber($number);
+        $saved = $this->repo->findOneByNumber($orderNumber);
         self::assertInstanceOf(\App\Orders\Entity\Order::class, $saved);
-        self::assertSame($number, $saved->getNumber());
+        self::assertSame($orderNumber, $saved->getNumber());
         self::assertCount(2, $saved->getLines()); // two distinct SKUs
+
+        // Status should be PENDING at creation time (order and lines)
+        self::assertSame('PENDING', $saved->getStatus());
+        foreach ($saved->getLines() as $line) {
+            self::assertSame('PENDING', $line->getStatus()->value);
+        }
     }
 
     public function test_create_returns_409_on_duplicate_number(): void
@@ -145,12 +148,12 @@ final class OrderControllerTest extends WebTestCase
     {
         $this->expectError();
 
-        $number = 'ORD-NEW-999';
+        $orderNumber = 'ORD-NEW-999';
         $payload = [
-            'number' => $number,
+            'number' => $orderNumber,
             'lines'  => [
                 ['productSku' => 'SKU-001', 'qty' => 1],
-                ['productSku' => 'SKU-001', 'qty' => 2], // same SKU, different case
+                ['productSku' => 'SKU-001', 'qty' => 2], // duplicate SKU in payload
             ],
         ];
 
@@ -168,9 +171,9 @@ final class OrderControllerTest extends WebTestCase
     {
         $this->expectSuccess();
 
-        $number = 'ORD-MSG-TEST-001';
+        $orderNumber = 'ORD-MSG-TEST-001';
         $payload = [
-            'number' => $number,
+            'number' => $orderNumber,
             'lines'  => [
                 ['productSku' => 'SKU-001', 'qty' => 2],
                 ['productSku' => 'SKU-002', 'qty' => 1],
@@ -194,7 +197,7 @@ final class OrderControllerTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
 
         // Verify order was created
-        $order = $this->repo->findOneByNumber($number);
+        $order = $this->repo->findOneByNumber($orderNumber);
         self::assertInstanceOf(Order::class, $order);
 
         // Verify message was dispatched
@@ -205,7 +208,7 @@ final class OrderControllerTest extends WebTestCase
         $message = $envelope->getMessage();
         
         self::assertInstanceOf(OrderCreatedMessage::class, $message);
-        self::assertSame($number, $message->orderNumber);
+        self::assertSame($orderNumber, $message->orderNumber);
         self::assertCount(2, $message->lines);
         
         // Verify message content

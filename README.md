@@ -1,263 +1,71 @@
 # PostLit - E-Commerce Order Management System
 
-A Symfony-based microservices-style application for managing orders and warehouse inventory with decoupled modules communicating via asynchronous messaging.
+## About
 
-## Table of Contents
+PostLit is a Symfony-based, modular application for orders and warehousing, designed to demonstrate clean boundaries and asynchronous communication without going "full microservices". Each module has its own controllers, services, entities, and messaging handlers, and communicates via Symfony Messenger (Redis) instead of direct service calls.
 
-- [Architecture Overview](#architecture-overview)
-- [System Modules](#system-modules)
-- [Messaging Architecture](#messaging-architecture)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [API Endpoints](#api-endpoints)
-- [Testing](#testing)
-- [Configuration](#configuration)
-- [Development Workflow](#development-workflow)
+Why this structure:
+- Decoupled modules model real-world teams and ownership without operational overhead of many deployables.
+- Async messaging keeps modules independent in time and failure modes, while still simple to develop locally.
+- Orders do not compute availability; Warehousing is the source of truth for reservation and shipment state.
 
-## Architecture Overview
+Intentional design choices:
+- Single-warehouse allocation per SKU line: the system does not split a single order line across multiple warehouses. Reasons:
+  - Lower total shipping and handling fees by avoiding split shipments per line.
+  - Simpler customer experience (one parcel per line reduces tracking complexity).
+  - Reduced risk of partial shipments arriving out of order and causing support churn.
+  - Clearer stock movements and easier reconciliation for finance/ops.
+  - Keeps allocation logic straightforward for this demo; cross-warehouse splitting can be added later if desired.
 
-This application follows a **decoupled, message-driven architecture** where two main modules communicate asynchronously:
-
-- **Products Module**: Handles product data, decoupled from the rest
-- **Orders Module**: Handles order creation and lifecycle
-- **Warehousing Module**: Manages stock reservations, inventory, and fulfillment
-
-The modules are **completely isolated** - they don't share entities or directly call each other's services. All communication happens through **Redis-based message queues** using Symfony Messenger.
-
-### Key Design Principles
-
-1. **Decoupling**: Modules only communicate via messages, not direct service calls
-2. **Asynchronous Processing**: All inter-module communication is queued
-3. **Status Synchronization**: Order status is driven by Warehousing, not computed internally
-4. **Single Source of Truth**: Warehousing is the authority for reservation status
-
-## System Modules
-
-### Orders Module (`src/Orders/`)
-
-**Responsibilities:**
-- Order creation and management
-- Order status tracking (received from Warehousing via messages)
-- Order line items management
-
-**Key Components:**
-- `OrderController`: HTTP endpoints for order operations
-- `OrderService`: Business logic for order operations
-- `OrderCreatedMessage`: Message dispatched when an order is created
-- `UpdateOrderStatusHandler`: Handles status updates from Warehousing
-
-**Status Flow:**
-- Orders start with `PENDING` status
-- All subsequent status updates (order and line-level) come from Warehousing messages
-- Order does NOT compute its own status
-- Order lines receive quantities (qtyReserved, qtyShipped) and statuses from Warehousing
-
-### Warehousing Module (`src/Warehousing/`)
-
-**Responsibilities:**
-- Stock reservation management
-- Inventory allocation and tracking
-- Stock reservation lifecycle (create, cancel, ship)
-- Stock reallocation when reservations are cancelled or when stock is received
-
-**Key Components:**
-- `StockReservationController`: HTTP endpoints for reservation operations
-- `StockReservationService`: Business logic for reservations
-- `StockReservationStatusChangedMessage`: Message dispatched on status changes
-- `CreateStockReservationHandler`: Handles order creation messages from Orders module
-- `StockAllocator`: Intelligent stock allocation across warehouses
-- `StockShipper`: Handles shipping operations
-
-**Stock Allocation Strategy:**
-- Prefers single-warehouse allocation when possible
-- FIFO (First In First Out) for waiting reservations
-- Automatic reallocation when stock becomes available (via cancellation or stock receipts)
-
-## Messaging Architecture
-
-### Message Flow
-
-```
-┌─────────────────┐                    ┌──────────────────┐
-│  Orders Module  │                    │ Warehousing      │
-│                 │                    │ Module           │
-└────────┬────────┘                    └────────┬─────────┘
-         │                                      │
-         │  OrderCreatedMessage                │
-         │─────────────────────────────────────>│
-         │                                      │
-         │                                      │ Create Stock Reservation
-         │                                      │
-         │                                      │
-         │  StockReservationStatusChangedMessage│
-         │<─────────────────────────────────────│
-         │                                      │
-         │ Update Order Status                  │
-         │                                      │
-```
-
-### Message Types
-
-#### OrderCreatedMessage (Orders → Warehousing)
-
-**Dispatched when:** An order is successfully created
-
-**Payload:**
-```php
-{
-    "orderNumber": "ORD-001",
-    "status": "PENDING",
-    "lines": [
-        {"productSku": "SKU-001", "qtyOrdered": 2},
-        {"productSku": "SKU-002", "qtyOrdered": 1}
-    ]
-}
-```
-
-**Handler:** `CreateStockReservationHandler` in Warehousing module
-**Action:** Creates a stock reservation with the specified SKUs and quantities
-
-#### StockReservationStatusChangedMessage (Warehousing → Orders)
-
-**Dispatched when:** 
-- A stock reservation is created (after allocation)
-- A stock reservation is cancelled
-- A stock reservation is shipped
-
-**Payload:**
-```php
-{
-    "reservationNumber": "ORD-001",
-    "status": "RESERVED", // RESERVED, RESERVED_PARTIAL, SHIPPED, CANCELED, OUT_OF_STOCK
-    "lines": [
-        {
-            "productSku": "SKU-001",
-            "qtyOrdered": 2,
-            "qtyReserved": 2,
-            "qtyShipped": 0,
-            "status": "RESERVED"
-        },
-        {
-            "productSku": "SKU-002",
-            "qtyOrdered": 1,
-            "qtyReserved": 0,
-            "qtyShipped": 0,
-            "status": "OUT_OF_STOCK"
-        }
-    ]
-}
-```
-
-**Handler:** `UpdateOrderStatusHandler` in Orders module
-**Action:** 
-- Updates the order status to match the reservation status
-- Updates order lines with quantities (qtyReserved, qtyShipped) and line-level statuses from warehousing
-- Orders module does not recompute statuses - all status updates come from warehousing messages
-
-### Status Mapping
-
-Warehousing Status → Order Status:
-- `RESERVED` → `RESERVED`
-- `RESERVED_PARTIAL` → `RESERVED_PARTIAL`
-- `SHIPPED` → `SHIPPED`
-- `CANCELED` → `CANCELED`
-- `OUT_OF_STOCK` → `OUT_OF_STOCK`
-- `PENDING` → `PENDING`
-
-## Prerequisites
-
-- **Docker Engine** + **Docker Compose v2**
-- Linux: Install Docker CE and Docker Compose:
-  ```bash
-  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-  sudo systemctl enable --now docker
-  ```
-- **(Optional)** Add your user to the `docker` group:
-  ```bash
-  sudo usermod -aG docker "$USER"
-  newgrp docker
-  ```
+Messaging:
+- Orders → Warehousing: OrderCreatedMessage (create reservations)
+- Warehousing → Orders: StockReservationStatusChangedMessage (sync statuses)
+- Reallocation: ReallocateStockJob queued on cancels and stock receipts
 
 ## Quick Start
 
-### Development Environment
+Prerequisites:
+- Docker + Docker Compose v2
 
-> **Important:** Do **not** run `make` commands with `sudo`. The Makefile auto-detects if your user can talk to Docker and falls back to `sudo docker` when needed.
+Environment notes:
+- Set Redis URL (with password if enabled) and Messenger DSN, e.g.:
+  - `REDIS_URL=redis://:password@redis:6379`
+  - `MESSENGER_TRANSPORT_DSN=${REDIS_URL}/messages`
 
-#### Initial Setup
-
-1. **Build and start the containers:**
-   ```bash
-   make up-dev
-   ```
-   This will build PHP-FPM, Nginx, PostgreSQL, and Redis containers. Initial build may take several minutes.
-
-2. **Install dependencies:**
-   ```bash
-   make install-dev
-   ```
-
-3. **Create database and seed with demo data:**
-   ```bash
-   make fresh-seed-dev
-   ```
-   This will:
-   - Drop existing database (if any)
-   - Create new database
-   - Run migrations
-   - Load test fixtures (warehouses, products, stock items)
-
-4. **Run tests:**
-   ```bash
-   make test-dev
-   ```
-
-#### Common Development Commands
-
-- **Inspect container status:**
-  ```bash
-  make ps-dev
-  ```
-
-- **View logs:**
-  ```bash
-  make logs-dev
-  ```
-
-- **Open shell in container:**
-  ```bash
-  make sh-dev
-  ```
-
-- **Stop containers:**
-  ```bash
-  make down-dev
-  ```
-
-- **Clear Symfony cache:**
-  ```bash
-  make cache-clear
-  ```
-
-- **Check health endpoint:**
-  ```bash
-  make health
-  ```
-
-### Production Environment
-
-Use the same commands without the `-dev` suffix:
-
+Setup:
+1) Start containers
 ```bash
-make up           # Start production stack
-make fresh-seed    # Create and seed database
-make test         # Run tests
-make down         # Stop stack
+make up-dev
+```
+2) Install dependencies
+```bash
+make install-dev
+```
+3) Initialize database and seed demo data (products, warehouses, stock)
+```bash
+make fresh-seed-dev
+```
+4) Run the worker (process async messages)
+```bash
+php bin/console messenger:consume async -vv --sleep=1 --time-limit=0 --memory-limit=-1
 ```
 
-## API Endpoints
+API base URL: `http://localhost:8080/api`
 
-All endpoints are prefixed with `/api`.
+## Testing
+
+Run the test suite:
+```bash
+make test-dev
+```
+
+Notes:
+- Tests use the in-memory messenger transport to assert dispatches.
+- Warehousing reallocation is exercised by cancelling reservations and by receiving stock.
+
+## Full API Reference
+
+See `API.md` for all endpoints, payloads, and examples.
 
 ### Health Checks
 
