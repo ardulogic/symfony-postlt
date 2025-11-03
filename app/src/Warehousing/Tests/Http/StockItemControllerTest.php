@@ -6,7 +6,6 @@ namespace App\Warehousing\Tests\Http;
 use App\Shared\Tests\WebTestCase;
 use App\Warehousing\Repository\StockItemRepository;
 use App\Warehousing\Tests\DataFixtures\StockItemTestFixture;
-use JsonException;
 
 final class StockItemControllerTest extends WebTestCase
 {
@@ -125,7 +124,7 @@ final class StockItemControllerTest extends WebTestCase
         self::assertNotNull($beforeItem);
         $beforeLv = $beforeItem->getLockVersion();
         $beforeOnHand = $beforeItem->getOnHandQty();
-        $this->em->clear(\App\Warehousing\Entity\StockItem::class);
+        $this->em->clear();
 
         // act
         $url = $this->url('stock_items_receive', ['code' => $code, 'sku' => $sku]);
