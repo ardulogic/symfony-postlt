@@ -201,7 +201,7 @@ final class StockReservationControllerTest extends WebTestCase
         self::assertNotEmpty($message->status, 'Status should be set');
         // Status could be RESERVED, RESERVED_PARTIAL, or OUT_OF_STOCK depending on stock availability
         self::assertContains($message->status, ['RESERVED', 'RESERVED_PARTIAL', 'OUT_OF_STOCK', 'PENDING']);
-        
+
         // Verify lines data is included
         self::assertIsArray($message->lines);
         self::assertCount(1, $message->lines);
@@ -235,6 +235,7 @@ final class StockReservationControllerTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
 
         // Get the transport and clear messages from creation
+        $this->client->disableReboot(); // On requests like these we must disable kernel reboot which clears sent msgs
         $transport = $this->c->get('messenger.transport.async');
         self::assertInstanceOf(InMemoryTransport::class, $transport);
         $transport->reset();
@@ -250,7 +251,7 @@ final class StockReservationControllerTest extends WebTestCase
 
         // Verify message was dispatched
         $sent = $transport->getSent();
-        self::assertCount(1, $sent, 'Exactly one StockReservationStatusChangedMessage should be dispatched on cancel');
+        self::assertCount(2, $sent, 'Expecting two messages: StockReservationStatusChangedMessage and ReallocateStockJob');
 
         $envelope = $sent[0];
         $message = $envelope->getMessage();
@@ -258,7 +259,7 @@ final class StockReservationControllerTest extends WebTestCase
         self::assertInstanceOf(StockReservationStatusChangedMessage::class, $message);
         self::assertSame($number, $message->reservationNumber);
         self::assertSame('CANCELED', $message->status);
-        
+
         // Verify lines data is included
         self::assertIsArray($message->lines);
         self::assertCount(1, $message->lines);
@@ -292,6 +293,7 @@ final class StockReservationControllerTest extends WebTestCase
         self::assertResponseStatusCodeSame(201);
 
         // Get the transport and clear messages from creation
+        $this->client->disableReboot();
         $transport = $this->c->get('messenger.transport.async');
         self::assertInstanceOf(InMemoryTransport::class, $transport);
         $transport->reset();
@@ -315,7 +317,7 @@ final class StockReservationControllerTest extends WebTestCase
         self::assertInstanceOf(StockReservationStatusChangedMessage::class, $message);
         self::assertSame($number, $message->reservationNumber);
         self::assertSame('SHIPPED', $message->status);
-        
+
         // Verify lines data is included
         self::assertIsArray($message->lines);
         self::assertCount(1, $message->lines);
