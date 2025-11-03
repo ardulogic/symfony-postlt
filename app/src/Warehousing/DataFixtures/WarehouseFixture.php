@@ -21,6 +21,7 @@ final class WarehouseFixture extends Fixture implements FixtureGroupInterface
         $warehousesData = [
             ['code' => 'WARE-EU-1', 'name' => 'Warehouse EU 1'],
             ['code' => 'WARE-EU-2', 'name' => 'Warehouse EU 2'],
+            ['code' => 'WARE-EU-3', 'name' => 'Warehouse EU 3'],
         ];
 
         $factory = new WarehouseFactory();
