@@ -56,6 +56,11 @@ stock_reservations_read:
     requirements:
         number: '(?-i)[A-Z0-9._-]{1,32}'
 
+stock_reservations_list:
+    path: warehouses/stock/reservations
+    controller: App\Warehousing\Http\StockReservationController::list
+    methods: [ GET ]
+
 stock_reservations_create:
     path: warehouses/stock/reservations
     controller: App\Warehousing\Http\StockReservationController::create
