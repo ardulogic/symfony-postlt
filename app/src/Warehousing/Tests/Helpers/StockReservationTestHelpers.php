@@ -49,7 +49,7 @@ trait StockReservationTestHelpers
      */
     protected function maxAvailable(string $sku): int
     {
-        $items = $this->stockRepo->getBySkus([$sku]);
+        $items = $this->stockRepo->getBySkusSortedByDescAvailability([$sku]);
         $max = 0;
 
         foreach ($items as $stockItem) {
@@ -66,7 +66,7 @@ trait StockReservationTestHelpers
      */
     protected function availableAt(string $sku, string $warehouseCode): int
     {
-        $items = $this->stockRepo->getBySkus([$sku]);
+        $items = $this->stockRepo->getBySkusSortedByDescAvailability([$sku]);
 
         foreach ($items as $stockItem) {
             if ($stockItem->getProductSku() === $sku

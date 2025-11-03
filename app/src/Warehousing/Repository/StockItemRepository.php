@@ -73,7 +73,7 @@ final class StockItemRepository extends ServiceEntityRepository
      * Availability map: [ warehouseId => [ sku => ['available'=>int,'item_id'=>uuid,'warehouse_code'=>string] ] ]
      * Only returns rows with available > 0.
      */
-    public function getBySkus(array $skus): array
+    public function getBySkusSortedByDescAvailability(array $skus): array
     {
         $skus = array_values(array_unique(array_filter($skus)));
         if (!$skus) return [];
@@ -96,39 +96,13 @@ final class StockItemRepository extends ServiceEntityRepository
             FROM stock_items si
             JOIN warehouses w ON w.id = si.warehouse_id
             WHERE si.product_sku IN (:skus)
-            ORDER BY w.code, si.product_sku
+            ORDER BY available DESC
         SQL;
 
         $q = $em->createNativeQuery($sql, $rsm);
         $q->setParameter('skus', $skus, ArrayParameterType::STRING);
 
         return $q->getResult();
-    }
-
-    /**
-     * Used when shipping to move from reserved → consumed.
-     */
-    public function consumeReserved(int $warehouseId, string $sku, int $qty): bool
-    {
-        if ($qty <= 0) return false;
-
-        $conn = $this->getEntityManager()->getConnection();
-        $sql = <<<SQL
-            UPDATE stock_items
-               SET reserved_qty = reserved_qty - :qty,
-                   on_hand_qty   = on_hand_qty   - :qty,
-                   lock_version  = lock_version + 1,
-                   updated_at    = NOW()
-             WHERE warehouse_id = :wid
-               AND product_sku  = :sku
-               AND reserved_qty >= :qty
-        SQL;
-
-        return $conn->executeStatement($sql, [
-                'qty' => $qty,
-                'wid' => $warehouseId,
-                'sku' => $sku,
-            ]) === 1;
     }
 
     /**
