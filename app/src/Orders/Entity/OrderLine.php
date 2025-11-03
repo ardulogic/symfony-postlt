@@ -138,7 +138,7 @@ class OrderLine
         }
         // TODO: We can make another status PARTIALLY_SHIPPED, FULLY RESERVED
         if ($this->qtyReserved + $this->qtyShipped >= $this->qtyOrdered) {
-            $this->status = OrderLineStatus::RESERVED_FULL->value;
+            $this->status = OrderLineStatus::RESERVED->value;
             return;
         }
         if ($this->qtyReserved < $this->qtyOrdered - $this->qtyShipped) {
