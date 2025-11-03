@@ -5,6 +5,11 @@ orders_read:
     requirements:
         number: '(?-i)[A-Z0-9._-]{1,32}'
 
+orders_list:
+    path: /orders
+    controller: App\Orders\Http\OrderController::list
+    methods: [GET]
+
 orders_create:
     path: /orders/create
     controller: App\Orders\Http\OrderController::create
