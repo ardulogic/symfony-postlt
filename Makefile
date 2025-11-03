@@ -27,7 +27,7 @@ help:
 	@echo "  make ps           - Show prod services"
 	@echo "  make sh           - Start shell within the container"
 	@echo "  make fresh-seed   - !Caution. Make db diff, migrate, purge and seed."
-	@echo "  make test   	   - Run Unit tests"
+	@echo "  make test         - Run Unit tests"
 	@echo "  make worker       - Run Messenger worker on prod"
 	@echo ""
 	@echo "Dev:"
