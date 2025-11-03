@@ -9,6 +9,7 @@ use App\Orders\Repository\OrderRepository;
 use App\Orders\Service\OrderService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -52,6 +53,17 @@ final class OrderController extends AbstractController
 
         // The serializer automatically adds public getters to json
         return $this->json($order,  Response::HTTP_OK);
+    }
+
+    public function list(Request $request, OrderRepository $repository): JsonResponse
+    {
+        $page = max(1, (int)$request->query->get('page', 1));
+        $perPage = min(max(1, (int)$request->query->get('per_page', 20)), 100);
+
+        $orders = $repository->list($page, $perPage);
+
+        // The serializer automatically adds public getters to json
+        return $this->json($orders,  Response::HTTP_OK);
     }
 
     private function generateOrderUrl(Order $order): string
