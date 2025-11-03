@@ -206,17 +206,17 @@ final class OrderControllerTest extends WebTestCase
 
         $envelope = $sent[0];
         $message = $envelope->getMessage();
-        
+
         self::assertInstanceOf(OrderCreatedMessage::class, $message);
         self::assertSame($orderNumber, $message->orderNumber);
         self::assertCount(2, $message->lines);
-        
+
         // Verify message content
         self::assertSame('PENDING', $message->status, 'Order status should be PENDING when created');
-        
+
         $line1 = $message->lines[0];
         $line2 = $message->lines[1];
-        
+
         self::assertSame('SKU-001', $line1['productSku']);
         self::assertSame(2, $line1['qtyOrdered']);
         self::assertSame('SKU-002', $line2['productSku']);

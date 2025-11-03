@@ -43,7 +43,7 @@ class OrderLine
         $this->productSku = $sku;
         $this->qtyOrdered = $qty;
 
-        $this->recomputeStatus();
+        $this->setStatus(OrderLineStatus::PENDING);
     }
 
     public function getId(): ?string
@@ -76,30 +76,12 @@ class OrderLine
         return OrderLineStatus::from($this->status);
     }
 
-    public function setReservedDelta(int $delta): void
+    /**
+     * Direct setter for status from warehousing (no recomputation)
+     */
+    public function setStatus(OrderLineStatus $status): void
     {
-        if ($delta <= 0) throw new \InvalidArgumentException('reserveDelta must be positive');
-        $this->qtyReserved += $delta;
-        if ($this->qtyReserved > $this->qtyOrdered) throw new \DomainException('qtyReserved > qtyOrdered');
-
-        $this->recomputeStatus();
-    }
-
-    public function shipFromReserved(int $qty): void
-    {
-        if ($qty <= 0 || $qty > $this->qtyReserved) throw new \DomainException('Invalid ship qty');
-        $this->qtyReserved -= $qty;
-        $this->qtyShipped += $qty;
-        if ($this->qtyShipped > $this->qtyOrdered) throw new \DomainException('qtyShipped > qtyOrdered');
-
-        $this->recomputeStatus();
-    }
-
-    public function cancel(): void
-    {
-        $this->qtyReserved = 0;
-
-        $this->status = OrderLineStatus::CANCELED->value;
+        $this->status = $status->value;
     }
 
     /**
@@ -120,33 +102,5 @@ class OrderLine
         $this->qtyShipped = $qty;
     }
 
-    /**
-     * Direct setter for status from warehousing (no recomputation)
-     */
-    public function setStatus(OrderLineStatus $status): void
-    {
-        $this->status = $status->value;
-    }
-
-    private function recomputeStatus(): void
-    {
-        if ($this->status === OrderLineStatus::CANCELED->value) return;
-
-        if ($this->qtyShipped >= $this->qtyOrdered) {
-            $this->status = OrderLineStatus::SHIPPED->value;
-            return;
-        }
-        // TODO: We can make another status PARTIALLY_SHIPPED, FULLY RESERVED
-        if ($this->qtyReserved + $this->qtyShipped >= $this->qtyOrdered) {
-            $this->status = OrderLineStatus::RESERVED->value;
-            return;
-        }
-        if ($this->qtyReserved < $this->qtyOrdered - $this->qtyShipped) {
-            $this->status = OrderLineStatus::RESERVED_PARTIAL->value;
-            return;
-        }
-
-        $this->status = OrderLineStatus::PENDING->value;
-    }
 
 }
