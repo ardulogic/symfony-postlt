@@ -27,28 +27,33 @@ Messaging:
 Prerequisites:
 - Docker + Docker Compose v2
 
-Environment notes:
-- Set Redis URL (with password if enabled) and Messenger DSN, e.g.:
-  - `REDIS_URL=redis://:password@redis:6379`
-  - `MESSENGER_TRANSPORT_DSN=${REDIS_URL}/messages`
-
 Setup:
-1) Start containers
+1) Build and start containers
 ```bash
 make up-dev
 ```
-2) Install composer dependencies, create required directories
+
+2) Create required directories
+```bash
+make prepare-dirs-dev
+
+```
+3) Install composer dependencies
 ```bash
 make install-dev
 ```
-3) Initialize database and seed demo data (products, warehouses, stock)
+
+4) Initialize database and seed demo data (products, warehouses, stock)
 ```bash
 make fresh-seed-dev
 ```
-4) Run the worker (process async messages)
+
+5) Run the worker which processes redis queues
 ```bash
 make worker-dev
 ```
+
+Thats it!
 
 API pulse URL: `http://localhost:8080/api/health-ready`
 
@@ -60,8 +65,8 @@ make test-dev
 ```
 
 Notes:
-- Tests use the in-memory messenger transport to assert dispatches.
-- Warehousing reallocation is exercised by cancelling reservations and by receiving stock.
+- Tests use the async in-memory messenger transport to assert dispatches.
+- Warehousing reallocation is exercised by cancelling reservations or receiving stock.
 
 ## Full API Reference
 
@@ -72,143 +77,9 @@ See [`API.md`](docs/API.md) for all endpoints, payloads, and examples.
 - **`GET /api/health/live`** - Liveness probe
 - **`GET /api/health/ready`** - Readiness probe (checks DB and Redis)
 
-### Orders Module
+### Main API endpoints
 
-#### Create Order
-**`POST /api/orders/create`**
-```json
-{
-    "number": "ORD-001",
-    "lines": [
-        {"productSku": "SKU-001", "qty": 2},
-        {"productSku": "SKU-002", "qty": 1}
-    ]
-}
-```
-**Response:** `201 Created` with `Location` header  
-**Triggers:** Dispatches `OrderCreatedMessage` → Warehousing creates stock reservation
-
-#### Read Order
-**`GET /api/orders/{number}`**  
-**Response:** `200 OK` with order JSON (includes lines, status)
-
-### Products Module
-
-#### Create Product
-**`POST /api/products`**
-```json
-{
-    "sku": "SKU-001",
-    "name": "Product Name"
-}
-```
-**Response:** `201 Created` with `Location` header
-
-#### Read Product
-**`GET /api/products/{sku}`**  
-**Response:** `200 OK` with product JSON  
-**Error:** `404 Not Found` if product doesn't exist
-
-#### List Products
-**`GET /api/products?page=1&per_page=20`**  
-**Query Parameters:**
-- `page` (optional, default: 1) - Page number
-- `per_page` (optional, default: 20, max: 100) - Items per page
-
-**Response:** `200 OK` with paginated list:
-```json
-{
-    "data": [ ],
-    "meta": {
-        "page": 1,
-        "per_page": 20,
-        "total": 100,
-        "total_pages": 5
-    }
-}
-```
-
-#### Update Product
-**`PUT /api/products/{sku}`**
-```json
-{
-    "name": "Updated Name"
-}
-```
-**Response:** `200 OK` with updated product  
-**Error:** `404 Not Found` if product doesn't exist  
-**Note:** At least one field (sku or name) must be provided
-
-#### Delete Product
-**`DELETE /api/products/{sku}`**  
-**Response:** `204 No Content`  
-**Error:** `404 Not Found` if product doesn't exist
-
-### Warehousing Module
-
-#### Stock Reservations
-
-**Create Reservation**
-**`POST /api/warehouses/stock/reservations`**
-```json
-{
-    "number": "ORD-001",
-    "lines": [
-        {"productSku": "SKU-001", "qty": 2}
-    ]
-}
-```
-**Response:** `201 Created`  
-**Triggers:** Dispatches `StockReservationStatusChangedMessage` with status
-
-**Read Reservation**
-**`GET /api/warehouses/stock/reservations/{number}`**  
-**Response:** `200 OK` with reservation details (includes lines, status, quantities)
-
-**List Reservations**
-**`GET /api/warehouses/stock/reservations?page=1&per_page=20`**  
-**Query Parameters:**
-- `page` (optional, default: 1) - Page number
-- `per_page` (optional, default: 20, max: 100) - Items per page
-
-**Response:** `200 OK` with paginated list
-```json
-{
-  "data": [
-    { "number": "ORD-001", "status": "RESERVED", "lines": [ ] },
-    { "number": "ORD-002", "status": "RESERVED_PARTIAL", "lines": [ ] }
-  ],
-  "meta": {
-    "page": 1,
-    "per_page": 20,
-    "total": 42,
-    "total_pages": 3
-  }
-}
-```
-
-**Cancel Reservation**
-**`PUT /api/warehouses/stock/reservations/{number}`**  
-**Response:** `202 Accepted`  
-**Triggers:** 
-- Dispatches `StockReservationStatusChangedMessage` with `CANCELED` status
-- Dispatches `ReallocateStockJob` for stock reallocation
-
-**Ship Reservation**
-**`POST /api/warehouses/stock/reservations/{number}/ship`**  
-**Response:** `202 Accepted`  
-**Triggers:** Dispatches `StockReservationStatusChangedMessage` with `SHIPPED` status
-
-#### Stock Items
-
-**Read Stock Item**
-**`GET /api/warehouses/{code}/stock/{sku}`**  
-**Response:** `200 OK` with stock item details (available, reserved, on-hand quantities)  
-**Parameters:**
-- `code` - Warehouse code (1-32 chars, alphanumeric)
-- `sku` - Product SKU (1-64 chars, alphanumeric)
-
-**List Stock Items**
+#### List Stock Items
 **`GET /api/warehouses/stock?page=1&per_page=20`**  
 **Query Parameters:**
 - `page` (optional, default: 1) - Page number
@@ -230,7 +101,63 @@ See [`API.md`](docs/API.md) for all endpoints, payloads, and examples.
 }
 ```
 
-**Receive Stock**
+#### Create Order
+**`POST /api/orders/create`**
+```json
+{
+    "number": "ORD-001",
+    "lines": [
+        {"productSku": "SKU-001", "qty": 2},
+        {"productSku": "SKU-002", "qty": 1}
+    ]
+}
+```
+**Response:** `201 Created` with `Location` header  
+**Triggers:** Dispatches `OrderCreatedMessage` → Warehousing creates stock reservation
+
+- Make sure your worker is running: `make worker-dev` !
+
+#### Read Order
+**`GET /api/orders/{number}`**  
+**Response:** `200 OK` with order JSON (includes lines, status)
+
+- When order is allocated it will be updated via queue.
+
+#### List Reservations
+**`GET /api/warehouses/stock/reservations?page=1&per_page=20`**  
+**Query Parameters:**
+- `page` (optional, default: 1) - Page number
+- `per_page` (optional, default: 20, max: 100) - Items per page
+
+**Response:** `200 OK` with paginated list
+```json
+{
+  "data": [
+    { "number": "ORD-001", "status": "RESERVED", "lines": [ ] },
+    { "number": "ORD-002", "status": "RESERVED_PARTIAL", "lines": [ ] }
+  ],
+  "meta": {
+    "page": 1,
+    "per_page": 20,
+    "total": 42,
+    "total_pages": 3
+  }
+}
+```
+
+#### Cancel Reservation
+**`PUT /api/warehouses/stock/reservations/{number}`**  
+**Response:** `202 Accepted`  
+**Triggers:** 
+- Dispatches `StockReservationStatusChangedMessage` with `CANCELED` status
+- Dispatches `ReallocateStockJob` for stock reallocation
+
+#### Ship Reservations
+**`POST /api/warehouses/stock/reservations/{number}/ship`**  
+**Response:** `202 Accepted`  
+**Triggers:** Dispatches `StockReservationStatusChangedMessage` with `SHIPPED` status
+
+#### Receive Stock
 **`POST /api/warehouses/{code}/stock/{sku}/receive`**
 ```json
 {
@@ -242,47 +169,6 @@ See [`API.md`](docs/API.md) for all endpoints, payloads, and examples.
 - `code` - Warehouse code (1-32 chars, alphanumeric)
 - `sku` - Product SKU (1-64 chars, alphanumeric)
 **Triggers:** Dispatches `ReallocateStockJob` for the received SKU to reattempt allocations
-
-#### Warehouses
-
-**Create Warehouse**
-**`POST /api/warehouses`**
-```json
-{
-    "code": "WH-001",
-    "name": "Warehouse Name"
-}
-```
-**Response:** `201 Created` with `Location` header
-
-**Read Warehouse**
-**`GET /api/warehouses/{code}`**  
-**Response:** `200 OK` with warehouse JSON  
-**Error:** `404 Not Found` if warehouse doesn't exist
-
-**List Warehouses**
-**`GET /api/warehouses?page=1&per_page=20`**  
-**Query Parameters:**
-- `page` (optional, default: 1) - Page number
-- `per_page` (optional, default: 20, max: 100) - Items per page
-
-**Response:** `200 OK` with paginated list (same format as products list)
-
-**Update Warehouse**
-**`PUT /api/warehouses/{code}`**
-```json
-{
-    "name": "Updated Name"
-}
-```
-**Response:** `200 OK` with updated warehouse  
-**Error:** `404 Not Found` if warehouse doesn't exist  
-**Note:** At least one field (code or name) must be provided
-
-**Delete Warehouse**
-**`DELETE /api/warehouses/{code}`**  
-**Response:** `204 No Content`  
-**Error:** `404 Not Found` if warehouse doesn't exist
 
 ## Testing
 
@@ -301,7 +187,7 @@ make test-dev
 
 Required environment variables (set in `.env` or docker-compose):
 
-- `DATABASE_URL`: PostgreSQL connection string
+- `DATABASE_URL`: PostgreSQL connection string, automatically passed via docker
 - `REDIS_URL`: Redis connection string (for cache and sessions)
 - `MESSENGER_TRANSPORT_DSN`: Redis connection for message queue (defaults to `REDIS_URL`)
 
@@ -316,47 +202,19 @@ Required environment variables (set in `.env` or docker-compose):
 - Messages are collected but not processed automatically
 - Allows tests to verify message dispatch
 
-**Message Routing:**
-```yaml
-'App\Orders\Messages\OrderCreatedMessage': async
-'App\Warehousing\Messages\StockReservationStatusChangedMessage': async
-'App\Warehousing\Messages\ReallocateStockJob': async
-```
-
 ### Running Message Workers
 
 In production, you need to run Symfony Messenger workers to process queued messages:
 
 ```bash
 # In container or local
-php bin/console messenger:consume async -vv
+make worker-dev
 ```
-
-For development with `sync://` transport, messages are processed immediately.
-
 ## Development Workflow
 
-### Typical Development Flow
-
-1. **Build and start docker container:**
+1. **See all make commands:**
    ```bash
    make up-dev
-   ```
-
-2. **Make code changes** in `app/src/`
-
-3. **Run tests** to verify changes:
-   ```bash
-   make test-dev
-   ```
-
-4. **Test API manually:**
-   - API available at: `http://localhost:8080/api`
-   - Use curl, Postman, or any HTTP client
-
-5. **Check logs** if issues arise:
-   ```bash
-   make logs-dev
    ```
 
 ### Database Migrations
@@ -370,8 +228,8 @@ php bin/console doctrine:migrations:diff
 # Apply migration
 php bin/console doctrine:migrations:migrate
 
-# Or use make command
-make fresh-diff-seed-dev  # Creates diff, migrates, and seeds
+# Or use make command which !purges all data and seeds
+make fresh-diff-seed-dev  # Creates diff, migrates, purges and seeds
 ```
 
 ## Order Lifecycle Example
@@ -424,12 +282,6 @@ RESERVED_PARTIAL → CANCELED (when reservation cancelled)
 OUT_OF_STOCK → RESERVED (when stock becomes available via reallocation)
 ```
 
-## Additional Resources
-
-- **Symfony Documentation:** https://symfony.com/doc/current/
-- **Symfony Messenger:** https://symfony.com/doc/current/messenger.html
-- **Doctrine ORM:** https://www.doctrine-project.org/projects/doctrine-orm/en/current/index.html
-
 ## Troubleshooting
 
 ### Messages Not Processing
@@ -437,12 +289,6 @@ OUT_OF_STOCK → RESERVED (when stock becomes available via reallocation)
 - Check Redis connection: `REDIS_URL` environment variable
 - Verify worker is running: `php bin/console messenger:consume async`
 - Check message routing in `messenger.yaml`
-
-### Tests Failing
-
-- Ensure fixtures are loaded: `make fresh-seed-dev`
-- Check test transport is `in-memory://` in test environment
-- Verify InMemoryTransport is accessible: `$this->c->get('messenger.transport.async')`
 
 ### Database Issues
 
