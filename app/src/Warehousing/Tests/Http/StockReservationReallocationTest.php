@@ -28,26 +28,36 @@ final class StockReservationReallocationTest extends WebTestCase
     public function test_cancel_of_one_reservation_triggers_reallocation_of_another(): void
     {
         $this->expectSuccess();
+        $this->client->enableReboot();
 
         $sku = 'SKU-001';
         $avail = $this->maxAvailable($sku);
         self::assertGreaterThan(0, $avail);
 
-        $this->createReservation('ORD-REALLOC-1', $sku, $avail);
+        $this->createReservation('ORD-REALLOC-1', $sku, $this->maxAvailable($sku));
         $this->createReservation('ORD-REALLOC-2', $sku, $this->maxAvailable($sku) + 1);
 
-        $before = $this->lineMap($this->readReservation('ORD-REALLOC-2'))[$sku];
-        self::assertSame(StockReservationStatus::RESERVED_PARTIAL->value, $this->readReservation('ORD-REALLOC-2')['status']);
+        $resBefore1 = $this->readReservation('ORD-REALLOC-1');
+        $resBefore2 = $this->readReservation('ORD-REALLOC-2');
 
+        self::assertSame(StockReservationStatus::RESERVED->value, $resBefore1['status']);
+        self::assertSame(StockReservationStatus::RESERVED_PARTIAL->value, $resBefore2['status']);
+
+       // $this->client->disableReboot();
         self::assertSame(202, $this->cancelReservation('ORD-REALLOC-1'));
 
-        $after = $this->lineMap($this->readReservation('ORD-REALLOC-2'))[$sku];
-        self::assertGreaterThan($before['reserved'], $after['reserved']);
+        $this->em->clear();
 
-        if ($after['reserved'] >= $after['ordered']) {
-            self::assertSame(StockReservationStatus::RESERVED->value, $this->readReservation('ORD-REALLOC-2')['status']);
-            self::assertSame(StockReservationLineStatus::RESERVED->value, $after['status']);
-        }
+        $resAfter1 = $this->readReservation('ORD-REALLOC-1');
+        self::assertSame(StockReservationStatus::CANCELED->value, $resAfter1['status']);
+
+        $this->em->clear();
+        $resAfter2 = $this->readReservation('ORD-REALLOC-2');
+        self::assertSame(StockReservationStatus::RESERVED->value, $resAfter2['status']);
+
+        self::assertGreaterThan($resAfter2['lines'][0]['qtyReserved'], $resBefore2['lines'][0]['qtyReserved']);
+
+        self::assertEquals($resAfter2['reserved'],  $resAfter2['ordered']);
     }
 
     public function test_cancel_unrelated_reservation_does_not_change_other_sku(): void
