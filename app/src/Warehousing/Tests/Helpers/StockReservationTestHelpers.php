@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Warehousing\Tests;
+namespace App\Warehousing\Tests\Helpers;
 
 use App\Warehousing\Repository\StockItemRepository;
 use App\Warehousing\Repository\StockReservationRepository;
@@ -23,7 +23,7 @@ trait StockReservationTestHelpers
     {
         $this->client->request('GET', $this->url('stock_reservations_read', ['number' => $number]));
         self::assertResponseStatusCodeSame(200);
-        
+
         return json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
     }
 
@@ -51,13 +51,13 @@ trait StockReservationTestHelpers
     {
         $items = $this->stockRepo->getBySkus([$sku]);
         $max = 0;
-        
+
         foreach ($items as $stockItem) {
             if ($stockItem->getProductSku() === $sku) {
                 $max = max($max, $stockItem->getAvailableQty());
             }
         }
-        
+
         return $max;
     }
 
@@ -67,14 +67,14 @@ trait StockReservationTestHelpers
     protected function availableAt(string $sku, string $warehouseCode): int
     {
         $items = $this->stockRepo->getBySkus([$sku]);
-        
+
         foreach ($items as $stockItem) {
-            if ($stockItem->getProductSku() === $sku 
+            if ($stockItem->getProductSku() === $sku
                 && $stockItem->getWarehouse()->getCode() === $warehouseCode) {
                 return $stockItem->getAvailableQty();
             }
         }
-        
+
         return 0;
     }
 
@@ -84,7 +84,7 @@ trait StockReservationTestHelpers
     protected function onHandAt(string $warehouseCode, string $sku): int
     {
         $stockItem = $this->stockRepo->findOneByWarehouseCodeAndSku($warehouseCode, $sku);
-        
+
         return $stockItem ? $stockItem->getOnHandQty() : 0;
     }
 
@@ -102,9 +102,9 @@ trait StockReservationTestHelpers
                 'lines' => [['productSku' => $sku, 'qty' => $qty]],
             ], JSON_THROW_ON_ERROR)
         );
-        
+
         self::assertResponseStatusCodeSame(201);
-        
+
         return $this->readReservation($number);
     }
 
@@ -118,7 +118,7 @@ trait StockReservationTestHelpers
             $this->url('stock_reservations_cancel', ['number' => $number]),
             server: ['CONTENT_TYPE' => 'application/json']
         );
-        
+
         return $this->client->getResponse()->getStatusCode();
     }
 
@@ -132,7 +132,7 @@ trait StockReservationTestHelpers
             $this->url('stock_reservations_ship', ['number' => $number]),
             server: ['CONTENT_TYPE' => 'application/json']
         );
-        
+
         return $this->client->getResponse()->getStatusCode();
     }
 }
