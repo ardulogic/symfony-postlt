@@ -74,15 +74,15 @@ final class StockReservationController extends AbstractController
         }
 
         try {
-            $service->cancel($reservation);
+            $updatedReservation = $service->cancel($reservation);
         } catch (StockReservationAlreadyCancelledException) {
-            return $this->json(['message' => 'Order is already cancelled'], Response::HTTP_CONFLICT);
+            return $this->json(['message' => 'Stock reservation is already cancelled'], Response::HTTP_CONFLICT);
         }
 
         return $this->json(
-            $reservation,
+            $updatedReservation,
             Response::HTTP_ACCEPTED,
-            ['Location' => $this->generateStockReservationUrl($reservation)]
+            ['Location' => $this->generateStockReservationUrl($updatedReservation)]
         );
     }
 
