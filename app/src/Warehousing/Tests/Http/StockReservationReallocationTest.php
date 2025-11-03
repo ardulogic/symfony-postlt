@@ -249,14 +249,16 @@ final class StockReservationReallocationTest extends WebTestCase
         self::assertSame(StockReservationStatus::RESERVED_PARTIAL->value, $before['status']);
 
         // Receive new stock for the same SKU at an existing warehouse
-        $code = 'WARE-EU-4'; // exists in fixtures; can accept new SKU rows
+        $code = 'WARE-EU-3'; // exists in fixtures; can accept new SKU rows
         $this->client->request(
             'POST',
             $this->url('stock_items_receive', ['code' => $code, 'sku' => $sku]),
             server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['qty' => 2], JSON_THROW_ON_ERROR)
+            content: json_encode(['qty' => 10], JSON_THROW_ON_ERROR)
         );
         self::assertResponseStatusCodeSame(201);
+
+        $this->em->clear();
 
         // Process async reallocation job
         TestQueueWorker::doQueuedJobs($this->c);
