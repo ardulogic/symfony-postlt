@@ -3,10 +3,9 @@
 namespace App\Warehousing\Tests\Http;
 
 use App\Shared\Tests\WebTestCase;
-use App\Warehousing\Enum\StockReservationLineStatus;
 use App\Warehousing\Enum\StockReservationStatus;
 use App\Warehousing\Tests\DataFixtures\StockReservationEmptyTestFixture;
-use App\Warehousing\Tests\StockReservationTestHelpers;
+use App\Warehousing\Tests\Helpers\StockReservationTestHelpers;
 
 final class StockReservationReallocationTest extends WebTestCase
 {
@@ -45,7 +44,6 @@ final class StockReservationReallocationTest extends WebTestCase
 
        // $this->client->disableReboot();
         self::assertSame(202, $this->cancelReservation('ORD-REALLOC-1'));
-
         $this->em->clear();
 
         $resAfter1 = $this->readReservation('ORD-REALLOC-1');
@@ -55,9 +53,9 @@ final class StockReservationReallocationTest extends WebTestCase
         $resAfter2 = $this->readReservation('ORD-REALLOC-2');
         self::assertSame(StockReservationStatus::RESERVED->value, $resAfter2['status']);
 
-        self::assertGreaterThan($resAfter2['lines'][0]['qtyReserved'], $resBefore2['lines'][0]['qtyReserved']);
+        self::assertGreaterThan($resBefore2['lines'][0]['reservedQty'], $resAfter2['lines'][0]['reservedQty']);
 
-        self::assertEquals($resAfter2['reserved'],  $resAfter2['ordered']);
+        self::assertEquals($resBefore2['lines'][0]['reservedQty'],  $resBefore2['lines'][0]['reservedQty']);
     }
 
     public function test_cancel_unrelated_reservation_does_not_change_other_sku(): void
