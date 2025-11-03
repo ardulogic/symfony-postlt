@@ -16,10 +16,7 @@ All endpoints are prefixed with `/api`.
 ## Orders
 - Create: `POST /api/orders/create`
 - Read: `GET /api/orders/{number}`
-
-Messages
-- Dispatches `OrderCreatedMessage` on create
-- Consumes `StockReservationStatusChangedMessage` to sync order and line statuses
+- List: `GET /api/orders?page=1&per_page=20`
 
 ## Warehouses
 - Create: `POST /api/warehouses`

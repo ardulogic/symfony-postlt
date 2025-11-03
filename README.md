@@ -37,7 +37,7 @@ Setup:
 ```bash
 make up-dev
 ```
-2) Install dependencies
+2) Install composer dependencies, create required directories
 ```bash
 make install-dev
 ```
@@ -50,7 +50,7 @@ make fresh-seed-dev
 make worker-dev
 ```
 
-API base URL: `http://localhost:8080/api`
+API pulse URL: `http://localhost:8080/api/health-ready`
 
 ## Testing
 
@@ -65,7 +65,7 @@ Notes:
 
 ## Full API Reference
 
-See `API.md` for all endpoints, payloads, and examples.
+See [`API.md`](docs/API.md) for all endpoints, payloads, and examples.
 
 ### Health Checks
 
@@ -118,7 +118,7 @@ See `API.md` for all endpoints, payloads, and examples.
 **Response:** `200 OK` with paginated list:
 ```json
 {
-    "data": [...],
+    "data": [ ],
     "meta": {
         "page": 1,
         "per_page": 20,
@@ -175,8 +175,8 @@ See `API.md` for all endpoints, payloads, and examples.
 ```json
 {
   "data": [
-    { "number": "ORD-001", "status": "RESERVED", "lines": [/* ... */] },
-    { "number": "ORD-002", "status": "RESERVED_PARTIAL", "lines": [/* ... */] }
+    { "number": "ORD-001", "status": "RESERVED", "lines": [ ] },
+    { "number": "ORD-002", "status": "RESERVED_PARTIAL", "lines": [ ] }
   ],
   "meta": {
     "page": 1,
@@ -338,7 +338,7 @@ For development with `sync://` transport, messages are processed immediately.
 
 ### Typical Development Flow
 
-1. **Start development environment:**
+1. **Build and start docker container:**
    ```bash
    make up-dev
    ```
