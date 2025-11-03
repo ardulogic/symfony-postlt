@@ -33,7 +33,8 @@ class StockAllocator
         $allocatedWhs = [];
 
         // Single query for all StockItems of SKUs in the reservation.
-        $stockItems = $this->stockRepo->getBySkus(array_keys($unassignedSkuLines));
+        // Stock items are picked in desc availability, so biggest line orders could be fulfilled first
+        $stockItems = $this->stockRepo->getBySkusSortedByDescAvailability(array_keys($unassignedSkuLines));
 
         // While there are SKUs still unassigned, pick the best warehouse for a batch.
         while (!empty($unassignedSkuLines)) {
@@ -83,6 +84,21 @@ class StockAllocator
         $reservation->recomputeStatus();
 
         return $reservation;
+    }
+
+    /**
+     * Sort reservation lines by remaining required quantity (DESC).
+     * Works in-place, so no return.
+     *
+     * @param array<string, StockReservationLine> $resLinesBySku
+     * @return void
+     */
+    private function sortSkuLinesByOrderedQtyDesc(array &$resLinesBySku): void
+    {
+        uasort($resLinesBySku, function (StockReservationLine $a, StockReservationLine $b): int {
+            // DESC order
+            return $b->getOrderedQty() <=> $a->getOrderedQty();
+        });
     }
 
     public function cancel(StockReservation $reservation): StockReservation
@@ -178,7 +194,7 @@ class StockAllocator
     }
 
     /**
-     * @return array<string,int> [sku => requiredQty]
+     * @return array<string,StockReservationLine>
      */
     private function extractReservationLinesBySku(StockReservation $reservation): array
     {
