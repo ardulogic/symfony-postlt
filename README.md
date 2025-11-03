@@ -55,7 +55,7 @@ make worker-dev
 
 Thats it!
 
-API pulse URL: `http://localhost:8080/api/health-ready`
+API pulse URL: `http://localhost:8080/api/health/ready`
 
 ## Testing
 
