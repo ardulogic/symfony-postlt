@@ -28,6 +28,8 @@
         </testsuite>
         <testsuite name="warehousing">
             <directory>src/Warehousing/Tests</directory>
+<!--            <file>src/Warehousing/Tests/Http/StockReservationReallocationTest.php</file>-->
+<!--            <file>src/Warehousing/Tests/Http/StockReservationShippingTest.php</file>-->
         </testsuite>
         <testsuite name="orders">
             <directory>src/Orders/Tests</directory>
