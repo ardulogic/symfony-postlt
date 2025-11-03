@@ -61,12 +61,12 @@ class StockItem
         return $this->lockVersion;
     }
 
-    public function getSku(): string
+    public function getProductSku(): string
     {
         return $this->productSku;
     }
 
-    public function setSku(string $sku): void
+    public function setProductSku(string $sku): void
     {
         $this->productSku = $sku;
     }
@@ -75,6 +75,12 @@ class StockItem
     {
         return $this->warehouse; // Doctrine may return a proxy; it behaves like Warehouse.
     }
+
+    public function getWarehouseCode(): ?string
+    {
+        return $this?->warehouse->getCode(); // Doctrine may return a proxy; it behaves like Warehouse.
+    }
+
 
     public function getOnHandQty(): int
     {
@@ -86,9 +92,19 @@ class StockItem
         return $this->reservedQty;
     }
 
-    public function available(): int
+    public function getAvailableQty(): int
     {
         return $this->onHandQty - $this->reservedQty;
+    }
+
+    public function getUpdatedAt(): \DateTimeImmutable
+    {
+        return $this->updatedAt;
+    }
+
+    public function getCreatedAt(): \DateTimeImmutable
+    {
+        return $this->createdAt;
     }
 
     public function adjustOnHand(int $delta): void
@@ -103,14 +119,17 @@ class StockItem
     public function reserve(int $qty): void
     {
         if ($qty <= 0) throw new \InvalidArgumentException('Reserve qty must be positive');
-        if ($this->available() < $qty) throw new \DomainException('Insufficient available stock');
+        if ($this->getAvailableQty() < $qty) throw new \DomainException('Insufficient available stock');
         $this->reservedQty += $qty;
         $this->touch();
     }
 
     public function release(int $qty): void
     {
-        if ($qty <= 0 || $qty > $this->reservedQty) throw new \DomainException('Invalid release qty');
+        if ($qty <= 0 || $qty > $this->reservedQty) {
+            throw new \DomainException('Invalid release qty');
+        }
+
         $this->reservedQty -= $qty;
         $this->touch();
     }
@@ -127,6 +146,7 @@ class StockItem
     {
         $this->updatedAt = new \DateTimeImmutable();
     }
+
 
 
 }

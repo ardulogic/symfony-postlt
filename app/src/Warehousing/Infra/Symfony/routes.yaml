@@ -42,3 +42,30 @@ stock_items_receive:
     requirements:
         code: '(?-i)[A-Z0-9._-]{1,32}'
         sku: '(?-i)[A-Z0-9._-]{1,64}'
+
+stock_reservations_read:
+    path: warehouses/stock/reservations/{number}
+    controller: App\Warehousing\Http\StockReservationController::read
+    methods: [ GET ]
+    requirements:
+        code: '(?-i)[A-Z0-9._-]{1,32}'
+        number: '(?-i)[A-Z0-9._-]{1,64}'
+
+stock_reservations_create:
+    path: warehouses/stock/reservations
+    controller: App\Warehousing\Http\StockReservationController::create
+    methods: [ POST ]
+
+stock_reservations_ship:
+    path: warehouses/stock/reservations/{number}/ship
+    controller: App\Warehousing\Http\StockReservationController::ship
+    methods: [ POST ]
+    requirements:
+        number: '(?-i)[A-Z0-9._-]{1,64}'
+
+stock_reservations_cancel:
+    path: warehouses/stock/reservations/{number}
+    controller: App\Warehousing\Http\StockReservationController::cancel
+    methods: [ PUT ]
+    requirements:
+        number: '(?-i)[A-Z0-9._-]{1,64}'

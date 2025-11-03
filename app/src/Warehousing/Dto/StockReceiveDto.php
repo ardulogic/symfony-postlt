@@ -11,5 +11,12 @@ final class StockReceiveDto
     #[Assert\Positive]
     public int $qty;
 
+    public static function fromArray(array $data): self
+    {
+        $dto = new self();
+        $dto->qty = (int)($data['qty'] ?? 0);
+
+        return $dto;
+    }
 }
 

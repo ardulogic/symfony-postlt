@@ -68,7 +68,7 @@ final class StockItemController extends AbstractController
             'stock_items_read',
             [
                 'code' => $item->getWarehouse()->getCode(),
-                'sku' => $item->getSku(),   // use the human SKU in the URL
+                'sku' => $item->getProductSku(),   // use the human SKU in the URL
             ],
             UrlGeneratorInterface::ABSOLUTE_URL
         );

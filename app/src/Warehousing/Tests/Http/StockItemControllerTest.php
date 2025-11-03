@@ -4,11 +4,8 @@ declare(strict_types=1);
 namespace App\Warehousing\Tests\Http;
 
 use App\Shared\Tests\WebTestCase;
-use App\Warehousing\Entity\Warehouse;
 use App\Warehousing\Repository\StockItemRepository;
-use App\Warehousing\Repository\WarehouseRepository;
 use App\Warehousing\Tests\DataFixtures\StockItemTestFixture;
-use App\Warehousing\Tests\DataFixtures\WarehouseTestFixture;
 use JsonException;
 
 final class StockItemControllerTest extends WebTestCase

@@ -3,8 +3,9 @@ declare(strict_types=1);
 
 namespace App\Warehousing\Tests\DataFixtures;
 
-use App\Warehousing\Entity\StockItem;
+use App\Warehousing\Dto\StockReceiveDto;
 use App\Warehousing\Entity\Warehouse;
+use App\Warehousing\Service\StockItemService;
 use Doctrine\Bundle\FixturesBundle\Fixture;
 use Doctrine\Common\DataFixtures\DependentFixtureInterface;
 use Doctrine\Persistence\ObjectManager;
@@ -13,38 +14,34 @@ use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 #[AutoconfigureTag('doctrine.fixture.orm')]
 final class StockItemTestFixture extends Fixture implements DependentFixtureInterface
 {
+    public function __construct(
+        private StockItemService $service, // injected
+    ) {}
+
     public function load(ObjectManager $om): void
     {
-        // onHand and reserved are applied via domain methods to keep invariants
+        // [warehouse_code, sku, qty]
         $seed = [
-            // code,         sku,        onHand, reserved
-            ['WARE-EU-1',   'SKU-001',   10,     0],
-            ['WARE-EU-1',   'SKU-002',    5,     2],
-            ['WARE-EU-2',   'SKU-001',   20,     0],
+            ['WARE-EU-1', 'SKU-001', 1],
+            ['WARE-EU-2', 'SKU-001', 2],
+            ['WARE-EU-3', 'SKU-001', 3],
+            ['WARE-EU-1', 'SKU-002', 1],
+            ['WARE-EU-2', 'SKU-002', 2],
+            ['WARE-EU-3', 'SKU-002', 3],
+            ['WARE-EU-4', 'SKU-004', 0],
         ];
 
         $whRepo = $om->getRepository(Warehouse::class);
 
-        foreach ($seed as [$code, $sku, $onHand, $reserved]) {
+        foreach ($seed as [$code, $sku, $qty]) {
             /** @var Warehouse|null $warehouse */
             $warehouse = $whRepo->findOneBy(['code' => $code]);
             if ($warehouse === null) {
                 throw new \RuntimeException(sprintf('Warehouse with code "%s" not found. Ensure the warehouse fixture runs first.', $code));
             }
 
-            $item = new StockItem($warehouse, $sku);
-
-            if ($onHand > 0) {
-                $item->adjustOnHand($onHand); // +onHand (keeps checks)
-            }
-            if ($reserved > 0) {
-                $item->reserve($reserved);    // reserve from available
-            }
-
-            $om->persist($item);
-
-            // Optionally set references for reuse in tests
-            $this->addReference(sprintf('stock.%s.%s', $code, $sku), $item);
+            $dto = StockReceiveDto::fromArray(['qty' => $qty]);
+            $this->service->receive($warehouse, $sku, $dto);
         }
 
         $om->flush();

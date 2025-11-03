@@ -208,8 +208,8 @@ final class WarehouseControllerTest extends WebTestCase
         // Meta assertions
         self::assertSame(1, $payload['meta']['page']);
         self::assertSame(1, $payload['meta']['per_page']);
-        self::assertSame(2, $payload['meta']['total']);       // fixture seeds WARE-EU-1, WARE-EU-2
-        self::assertSame(2, $payload['meta']['total_pages']); // ceil(2 / 1) = 2
+        self::assertSame(4, $payload['meta']['total']);       // fixture seeds WARE-EU-1, WARE-EU-2
+        self::assertSame(4, $payload['meta']['total_pages']); // ceil(2 / 1) = 2
 
         // Data assertions
         self::assertIsArray($payload['data']);
@@ -238,8 +238,8 @@ final class WarehouseControllerTest extends WebTestCase
 
         self::assertSame(2, $payload['meta']['page']);
         self::assertSame(1, $payload['meta']['per_page']);
-        self::assertSame(2, $payload['meta']['total']);
-        self::assertSame(2, $payload['meta']['total_pages']);
+        self::assertSame(4, $payload['meta']['total']);
+        self::assertSame(4, $payload['meta']['total_pages']);
 
         self::assertIsArray($payload['data']);
         self::assertCount(1, $payload['data']);

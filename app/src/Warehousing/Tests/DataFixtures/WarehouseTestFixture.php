@@ -27,6 +27,14 @@ final class WarehouseTestFixture extends Fixture
                 'code' => 'WARE-EU-2',
                 'name' => 'Warehouse Europe 2',
             ],
+            [
+                'code' => 'WARE-EU-3',
+                'name' => 'Warehouse Europe 3',
+            ],
+            [
+                'code' => 'WARE-EU-4',
+                'name' => 'Warehouse Europe 4',
+            ],
         ];
 
         $factory = new WarehouseFactory();
