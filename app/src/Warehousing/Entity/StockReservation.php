@@ -36,6 +36,11 @@ class StockReservation
         return $this->id ?? null;
     }
 
+    public function getReallocationLocked(): bool
+    {
+        return $this->reallocationLocked;
+    }
+
     public function setNumber(string $number): void
     {
         $this->number = $number;
@@ -107,22 +112,22 @@ class StockReservation
         }
 
         if ($pending > 0) {
-            $this->status =             StockReservationStatus::PENDING->value;
+            $this->status = StockReservationStatus::PENDING->value;
             return;
         }
 
         if ($totalItems === $cancelled) {
-            $this->status =             StockReservationStatus::CANCELED->value;
+            $this->status = StockReservationStatus::CANCELED->value;
             return;
         }
 
         if ($totalItems === $shipped) {
-            $this->status =             StockReservationStatus::SHIPPED->value;
+            $this->status = StockReservationStatus::SHIPPED->value;
             return;
         }
 
         if ($totalItems === $reserved) {
-            $this->status =             StockReservationStatus::RESERVED->value;
+            $this->status = StockReservationStatus::RESERVED->value;
 
             // Lock reallocation if fully reserved and not fractured across warehouses
             $this->setReallocationLocked($this->isFullyReservedInSingleWarehouse());
@@ -130,12 +135,12 @@ class StockReservation
         }
 
         if ($totalItems === $outOfStock) {
-            $this->status =             StockReservationStatus::OUT_OF_STOCK->value;
+            $this->status = StockReservationStatus::OUT_OF_STOCK->value;
             return;
         }
 
         if ($reservedPartial > 0) {
-            $this->status =             StockReservationStatus::RESERVED_PARTIAL->value;
+            $this->status = StockReservationStatus::RESERVED_PARTIAL->value;
             $this->setReallocationLocked(false);
             return;
         }
@@ -164,7 +169,6 @@ class StockReservation
 
         return true;
     }
-
 
 
 }
