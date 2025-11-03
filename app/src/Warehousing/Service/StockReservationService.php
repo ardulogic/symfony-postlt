@@ -49,9 +49,9 @@ final class StockReservationService
         return $savedReservation;
     }
 
-    public function cancel(StockReservation $reservation): void
+    public function cancel(StockReservation $reservation): ?StockReservation
     {
-        $affectedSkus = $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($reservation): array {
+        $updated = $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($reservation): StockReservation {
             if ($reservation->getStatus() === StockReservationStatus::CANCELED->value) {
                 throw new StockReservationAlreadyCancelledException();
             }
@@ -60,24 +60,22 @@ final class StockReservationService
 
             $this->repo->update($reservation);
 
-            return  $reservation->getLines()->map(fn($l) => $l->getProductSku())->toArray();
+            return $reservation;
         });
 
-        // Refresh entity to ensure we have the latest status
-        $this->em->refresh($reservation);
-        
-        $this->queueStockReallocation($reservation->getId(), $affectedSkus);
-        
-        // Dispatch status changed message after cancellation
-        $this->dispatchStatusChangedMessage($reservation);
-    }
+        // Force initialization of lines collection while still in transaction
+        // Iterate over the collection to ensure it's fully loaded before transaction ends
+        $affectedSkus = [];
+        foreach ($updated->getLines() as $line) {
+            $affectedSkus[] = $line->getProductSku();
+        }
 
-    public function queueStockReallocation(string $id, array $skus): void
-    {
-        $this->bus->dispatch(new ReallocateStockJob(
-            'reservation:' . $id,
-            $skus
-        ));
+        // Dispatch status changed message after cancellation
+        $this->dispatchStatusChangedMessage($updated);
+
+        $this->dispatchStockReallocation($updated->getId(), $affectedSkus);
+
+        return $updated;
     }
 
     public function reallocate(array $skus): StockReallocationResult
@@ -105,6 +103,14 @@ final class StockReservationService
         $this->dispatchStatusChangedMessage($shippedReservation);
 
         return $shippedReservation;
+    }
+
+    public function dispatchStockReallocation(string $id, array $skus): void
+    {
+        $this->bus->dispatch(new ReallocateStockJob(
+            'allocation-id:' . $id,
+            $skus
+        ));
     }
 
     private function dispatchStatusChangedMessage(StockReservation $reservation): void
