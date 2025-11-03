@@ -7,7 +7,7 @@ PostLit is a Symfony-based, modular application for orders and warehousing, desi
 Why this structure:
 - Decoupled modules model real-world teams and ownership without operational overhead of many deployables.
 - Async messaging keeps modules independent in time and failure modes, while still simple to develop locally.
-- Orders do not compute availability; Warehousing is the source of truth for reservation and shipment states.
+- Orders do not compute availability; Warehousing is the source of truth for reservation and shipment state.
 
 Intentional design choices:
 - Single-warehouse allocation per SKU line: the system does not split a single order line across multiple warehouses. Reasons:
@@ -16,6 +16,9 @@ Intentional design choices:
   - Reduced risk of partial shipments arriving out of order and causing support churn.
   - Clearer stock movements and easier reconciliation for finance/ops.
   - Keeps allocation logic straightforward for this demo; cross-warehouse splitting can be added later if desired.
+
+Allocation highlights:
+- Greedy heuristic favoring warehouses that can satisfy the most SKUs with the highest headroom; stock items are considered in descending availability so largest quantities are assigned first.
 
 Messaging:
 - Orders → Warehousing: OrderCreatedMessage (create reservations)
@@ -26,11 +29,6 @@ Messaging:
 
 Prerequisites:
 - Docker + Docker Compose v2
-
-Environment notes:
-- Set Redis URL (with password if enabled) and Messenger DSN, e.g.:
-  - `REDIS_URL=redis://:password@redis:6379`
-  - `MESSENGER_TRANSPORT_DSN=${REDIS_URL}/messages`
 
 Setup:
 1) Start containers
@@ -47,10 +45,39 @@ make fresh-seed-dev
 ```
 4) Run the worker (process async messages)
 ```bash
-make worker-dev
+php bin/console messenger:consume async -vv --sleep=1 --time-limit=0 --memory-limit=-1
 ```
 
 API base URL: `http://localhost:8080/api`
+
+Example endpoints:
+
+**List Stock Items**  
+`GET /api/warehouses/stock?page=1&per_page=20`  
+Response: `200 OK` with paginated list of stock items (onHandQty, reservedQty, warehouse)
+
+**Create Order**  
+`POST /api/orders/create`
+```json
+{
+  "number": "ORD-001",
+  "lines": [
+    {"productSku": "SKU-001", "qty": 2},
+    {"productSku": "SKU-002", "qty": 1}
+  ]
+}
+```
+
+** Dont forget to run the worker: `make worker-dev`! **
+
+Response: `201 Created` with `Location` header  
+Triggers: Dispatches `OrderCreatedMessage` → Warehousing creates stock reservation
+
+**List Orders**  
+`GET /api/orders?page=1&per_page=20`  
+Response: `200 OK` with paginated list
+
+For all endpoints, see [docs/API.md](docs/API.md)
 
 ## Testing
 
@@ -65,7 +92,7 @@ Notes:
 
 ## Full API Reference
 
-See `API.md` for all endpoints, payloads, and examples.
+See `docs/API.md` for all endpoints, payloads, and examples.
 
 ### Health Checks
 
