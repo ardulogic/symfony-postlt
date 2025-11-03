@@ -1,7 +1,8 @@
 # Makefile
 .PHONY: help build up rebuild down logs ps exec sh fresh-seed test \
         build-dev up-dev rebuild-dev down-dev logs-dev ps-dev install-dev sh-dev \
-        fresh-seed-dev fresh-diff-seed-dev test-dev cache-clear cache-warm health
+        fresh-seed-dev fresh-diff-seed-dev test-dev cache-clear cache-warm health \
+        worker worker-dev
 
 # If your user isn't in the "docker" group, this will auto-fallback to sudo
 DOCKER := $(shell groups | grep -qw docker && echo docker || echo "sudo docker")
@@ -27,6 +28,7 @@ help:
 	@echo "  make sh           - Start shell within the container"
 	@echo "  make seed-fresh   - !Caution. Recreate database and seed initial data."
 	@echo "  make test   	   - Run Unit tests"
+	@echo "  make worker       - Run Messenger worker (prod) --all --keepalive --sleep=1 -vv"
 	@echo ""
 	@echo "Dev:"
 	@echo "  make build-dev    - Build dev api image (cached)"
@@ -40,6 +42,7 @@ help:
 	@echo "  make fresh-seed-dev      - !Caution. Recreate whole database and seed."
 	@echo "  make fresh-diff-seed-dev - !Caution. Make db diff, migrate, purge data and seed."
 	@echo "  make test-dev     - Run Unit tests"
+	@echo "  make worker-dev   - Run Messenger worker (dev) --all --keepalive --sleep=1 -vv"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make cache-clear  - Clear Symfony cache in api"
@@ -87,6 +90,11 @@ test:
 		set -euo pipefail; \
 		find var/log/test -type f -name "*.log" -exec truncate -s 0 {} \; || true; \
 		./vendor/bin/phpunit --testdox --colors=always --stop-on-defect'
+
+worker:
+	$(COMPOSE) exec -T api bash -lc ' \
+		php bin/console messenger:consume --all --keepalive --sleep=1 -vv \
+	'
 
 
 # -------------------
@@ -138,6 +146,11 @@ test-dev:
 		set -euo pipefail; \
 		find var/log/test -type f -name "*.log" -exec truncate -s 0 {} \; || true; \
 		./vendor/bin/phpunit --testdox --colors=always --stop-on-defect'
+
+worker-dev:
+	$(DEV_ENV) $(COMPOSE_DEV) exec -T api bash -lc ' \
+		php bin/console messenger:consume --all --keepalive --sleep=1 -vv \
+	'
 
 # -------------------
 # UTIL

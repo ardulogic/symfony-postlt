@@ -7,7 +7,7 @@ PostLit is a Symfony-based, modular application for orders and warehousing, desi
 Why this structure:
 - Decoupled modules model real-world teams and ownership without operational overhead of many deployables.
 - Async messaging keeps modules independent in time and failure modes, while still simple to develop locally.
-- Orders do not compute availability; Warehousing is the source of truth for reservation and shipment state.
+- Orders do not compute availability; Warehousing is the source of truth for reservation and shipment states.
 
 Intentional design choices:
 - Single-warehouse allocation per SKU line: the system does not split a single order line across multiple warehouses. Reasons:
@@ -47,7 +47,7 @@ make fresh-seed-dev
 ```
 4) Run the worker (process async messages)
 ```bash
-php bin/console messenger:consume async -vv --sleep=1 --time-limit=0 --memory-limit=-1
+make worker-dev
 ```
 
 API base URL: `http://localhost:8080/api`
