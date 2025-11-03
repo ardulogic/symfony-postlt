@@ -26,7 +26,7 @@ help:
 	@echo "  make logs         - Tail prod logs"
 	@echo "  make ps           - Show prod services"
 	@echo "  make sh           - Start shell within the container"
-	@echo "  make seed-fresh   - !Caution. Recreate database and seed initial data."
+	@echo "  make fresh-seed   - !Caution. Recreate database and seed initial data."
 	@echo "  make test   	   - Run Unit tests"
 	@echo "  make worker       - Run Messenger worker (prod) --all --keepalive --sleep=1 -vv"
 	@echo ""
@@ -55,10 +55,14 @@ help:
 up:
 	$(COMPOSE) up -d --build
 
+prepare-dirs:
+	$(COMPOSE) exec -T -u root api bash -lc '\
+	  install -d -m 0775 -o www -g www var/cache/dev var/cache/prod var/cache/test var/log/dev var/log/test \
+	'
+
 install:
 	$(COMPOSE) run --rm api bash -lc '\
 		set -euo pipefail; \
-		mkdir -p var/cache/test var/cache/prod var/cache/dev var/log/dev var/log/test && \
 		composer install'
 
 rebuild:
@@ -106,10 +110,14 @@ worker:
 up-dev:
 	$(DEV_ENV) $(COMPOSE_DEV) up --build
 
+prepare-dirs-dev:
+	$(DEV_ENV) $(COMPOSE_DEV) exec -T -u root api bash -lc '\
+	  install -d -m 0775 -o www -g www var/cache/dev var/cache/prod var/cache/test var/log/dev var/log/test \
+	  '
+
 install-dev:
 	$(DEV_ENV) $(COMPOSE_DEV) run --rm api bash -lc '\
 		set -euo pipefail; \
-		mkdir -p var/cache/test var/cache/prod var/cache/dev var/log/dev var/log/test && \
 		composer install'
 
 rebuild-dev:
