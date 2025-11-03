@@ -1,6 +1,6 @@
 # Makefile
-.PHONY: help build up rebuild down logs ps exec sh fresh-seed test \
-        build-dev up-dev rebuild-dev down-dev logs-dev ps-dev install-dev sh-dev \
+.PHONY: help build up install rebuild down logs ps exec sh fresh-seed test \
+        up-dev install-dev rebuild-dev down-dev logs-dev ps-dev sh-dev \
         fresh-seed-dev fresh-diff-seed-dev test-dev cache-clear cache-warm health \
         worker worker-dev
 
@@ -19,25 +19,24 @@ DEV_ENV := BUILD_TARGET=dev APP_ENV=dev APP_DEBUG=1
 help:
 	@echo "Attention: Do not run this with sudo!"
 	@echo "Prod:"
-	@echo "  make build        - Build prod images (cached)"
 	@echo "  make up           - Start prod stack (build if needed)"
+	@echo "  make install      - Run composer install in prod api (after up)"
 	@echo "  make rebuild      - Rebuild prod images (no cache) and start"
+	@echo "  make down         - Stop prod stack and remove volumes"
 	@echo "  make logs         - Tail prod logs"
 	@echo "  make ps           - Show prod services"
-	@echo "  make down         - Stop prod stack and remove volumes"
 	@echo "  make sh           - Start shell within the container"
 	@echo "  make seed-fresh   - !Caution. Recreate database and seed initial data."
 	@echo "  make test   	   - Run Unit tests"
 	@echo "  make worker       - Run Messenger worker (prod) --all --keepalive --sleep=1 -vv"
 	@echo ""
 	@echo "Dev:"
-	@echo "  make build-dev    - Build dev api image (cached)"
 	@echo "  make up-dev       - Start dev stack (build if needed)"
-	@echo "  make rebuild-dev  - Rebuild dev api (no cache) and start"
 	@echo "  make install-dev  - Run composer install in dev api (after up-dev)"
+	@echo "  make rebuild-dev  - Rebuild dev api (no cache) and start"
+	@echo "  make down-dev     - Stop dev stack and remove volumes"
 	@echo "  make logs-dev     - Tail dev logs"
 	@echo "  make ps-dev       - Show dev services"
-	@echo "  make down-dev     - Stop dev stack and remove volumes"
 	@echo "  make sh-dev       - Start shell within the container"
 	@echo "  make fresh-seed-dev      - !Caution. Recreate whole database and seed."
 	@echo "  make fresh-diff-seed-dev - !Caution. Make db diff, migrate, purge data and seed."
@@ -52,11 +51,15 @@ help:
 # -------------------
 # PROD
 # -------------------
-build:
-	$(COMPOSE) build
 
 up:
 	$(COMPOSE) up -d --build
+
+install:
+	$(COMPOSE) run --rm api bash -lc '\
+		set -euo pipefail; \
+		mkdir -p var/cache/test var/cache/prod var/cache/dev var/log/dev var/log/test && \
+		composer install'
 
 rebuild:
 	$(COMPOSE) build --no-cache --pull
@@ -84,7 +87,7 @@ fresh-seed:
 		php bin/console doctrine:database:create --if-not-exists && \
 		php bin/console doctrine:migrations:migrate -n && \
 		php bin/console doctrine:fixtures:load -n --group=seed \
-
+	'
 test:
 	$(COMPOSE) exec api bash -lc '\
 		set -euo pipefail; \
@@ -100,18 +103,18 @@ worker:
 # -------------------
 # DEV
 # -------------------
-build-dev:
-	$(DEV_ENV) $(COMPOSE_DEV) build api
-
 up-dev:
 	$(DEV_ENV) $(COMPOSE_DEV) up --build
+
+install-dev:
+	$(DEV_ENV) $(COMPOSE_DEV) run --rm api bash -lc '\
+		set -euo pipefail; \
+		mkdir -p var/cache/test var/cache/prod var/cache/dev var/log/dev var/log/test && \
+		composer install'
 
 rebuild-dev:
 	$(DEV_ENV) $(COMPOSE_DEV) build --no-cache --pull api
 	$(DEV_ENV) $(COMPOSE_DEV) up
-
-install-dev:
-	$(DEV_ENV) $(COMPOSE_DEV) run --rm api composer install
 
 logs-dev:
 	$(DEV_ENV) $(COMPOSE_DEV) logs -f --tail=200
