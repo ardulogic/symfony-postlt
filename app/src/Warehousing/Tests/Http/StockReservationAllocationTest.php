@@ -6,7 +6,7 @@ use App\Shared\Tests\WebTestCase;
 use App\Warehousing\Enum\StockReservationLineStatus;
 use App\Warehousing\Enum\StockReservationStatus;
 use App\Warehousing\Tests\DataFixtures\StockReservationEmptyTestFixture;
-use App\Warehousing\Tests\StockReservationTestHelpers;
+use App\Warehousing\Tests\Helpers\StockReservationTestHelpers;
 
 final class StockReservationAllocationTest extends WebTestCase
 {
