@@ -6,10 +6,12 @@ namespace App\Warehousing\Tests\Http;
 use App\Tests\Support\WebTestCase;
 use App\Warehousing\Repository\StockItemRepository;
 use App\Warehousing\Tests\DataFixtures\StockItemTestFixture;
+use App\Warehousing\Tests\Helpers\StockItemTestHelpers;
 
 final class StockItemControllerTest extends WebTestCase
 {
     private StockItemRepository $repo;
+    use StockItemTestHelpers;
 
     protected function setUp(): void
     {
@@ -32,6 +34,12 @@ final class StockItemControllerTest extends WebTestCase
         $this->requireItem('WARE-EU-1', 'SKU-001');
     }
 
+    /**
+     * Read stock item
+     * Endpoint: stock_items_read
+     * Given an existing warehouse and SKU, when reading the item, then 200 and JSON containing matching SKU.
+     * @throws \JsonException
+     */
     public function test_read_returns_200_for_existing_item(): void
     {
         $this->expectSuccess();
@@ -39,16 +47,7 @@ final class StockItemControllerTest extends WebTestCase
         $warehouseCode = 'WARE-EU-1';
         $productSku  = 'SKU-001';
 
-        $this->client->request('GET',  $this->url('stock_items_read', ['code' => $warehouseCode, 'sku' => $productSku]));
-
-        self::assertResponseStatusCodeSame(200);
-        self::assertTrue(
-            str_starts_with($this->client->getResponse()->headers->get('Content-Type') ?? '', 'application/json'),
-            'Response should be JSON'
-        );
-
-        $data = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
-        self::assertIsArray($data);
+        $data = $this->readStockItem($warehouseCode, $productSku);
 
         // Be tolerant to serializer shape
         $payloadSku = $data['productSku'] ?? $data['sku'] ?? null;
@@ -57,6 +56,12 @@ final class StockItemControllerTest extends WebTestCase
         }
     }
 
+    /**
+     * Read stock item - unknown SKU
+     * Endpoint: stock_items_read
+     * Given an existing warehouse but unknown SKU, when reading the item, then 404 with error message.
+     * @throws \JsonException
+     */
     public function test_read_returns_404_for_unknown_sku_in_existing_warehouse(): void
     {
         $this->expectError();
@@ -64,14 +69,16 @@ final class StockItemControllerTest extends WebTestCase
         $warehouseCode = 'WARE-EU-1';
         $productSku  = 'NOPE-999';
 
-        $this->client->request('GET', $this->url('stock_items_read', ['code' => $warehouseCode, 'sku' => $productSku]));
-
-        self::assertResponseStatusCodeSame(404);
-
-        $data = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        $data = $this->readStockItem($warehouseCode, $productSku, 404);
         self::assertSame('Stock item not found', $data['message'] ?? null);
     }
 
+    /**
+     * Read stock item - unknown warehouse
+     * Endpoint: stock_items_read
+     * Given an unknown warehouse, when reading an item, then 404 with error message.
+     * @throws \JsonException
+     */
     public function test_read_returns_404_for_unknown_warehouse(): void
     {
         $this->expectSuccess();
@@ -79,14 +86,16 @@ final class StockItemControllerTest extends WebTestCase
         $code = 'NOPE-404';
         $sku  = 'SKU-001';
 
-        $this->client->request('GET', $this->url('stock_items_read', ['code' => $code, 'sku' => $sku]));
-
-        self::assertResponseStatusCodeSame(404);
-
-        $data = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        $data = $this->readStockItem($code, $sku, 404);
         self::assertSame('Stock item not found', $data['message'] ?? null);
     }
 
+    /**
+     * Receive stock
+     * Endpoint: stock_items_receive
+     * Given a missing SKU in an existing warehouse, when receiving stock, then 201 and entity created with on-hand set.
+     * @throws \JsonException
+     */
     public function test_receive_creates_new_item_and_returns_201_with_location(): void
     {
         $this->expectSuccess();
@@ -94,16 +103,7 @@ final class StockItemControllerTest extends WebTestCase
         $warehouseCode = 'WARE-EU-1';
         $productSku  = 'SKU-003'; // not in fixture → should create
 
-        $postUrl  = $this->url('stock_items_receive', ['code' => $warehouseCode, 'sku' => $productSku]);
-
-        $this->client->request(
-            'POST',
-            $postUrl,
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['qty' => 5], JSON_THROW_ON_ERROR)
-        );
-
-        self::assertResponseStatusCodeSame(201);
+        $this->receiveStock($warehouseCode, $productSku, 5);
 
         $item = $this->repo->findOneByWarehouseCodeAndSku($warehouseCode, $productSku);
         self::assertNotNull($item, 'Stock item should be created');
@@ -111,6 +111,12 @@ final class StockItemControllerTest extends WebTestCase
         self::assertSame(0, $item->getReservedQty());
     }
 
+    /**
+     * Receive stock increments lock version
+     * Endpoint: stock_items_receive
+     * Given an existing item, when receiving stock, then 201 and lock version increases and on-hand grows by qty.
+     * @throws \JsonException
+     */
     public function test_receive_increments_lock_version(): void
     {
         $this->expectSuccess();
@@ -126,14 +132,7 @@ final class StockItemControllerTest extends WebTestCase
         $this->em->clear();
 
         // act
-        $url = $this->url('stock_items_receive', ['code' => $warehouseCode, 'sku' => $productSku]);
-        $this->client->request(
-            'POST',
-            $url,
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode(['qty' => 3], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+        $this->receiveStock($warehouseCode, $productSku, 3);
 
         // make sure we don’t read a cached entity
         static::getContainer()->get('doctrine')->getManager()->clear();
