@@ -28,9 +28,10 @@ class StockAllocator
     {
         // Required quantities per SKU.
         $unassignedSkuLines = $this->extractReservationLinesBySku($reservation);
+        $this->sortSkuLinesByOrderedQtyDesc($unassignedSkuLines);
 
         // Array of allocated warehouses
-        $allocatedWhs = [];
+        $allocWarehouses = [];
 
         // Single query for all StockItems of SKUs in the reservation.
         // Stock items are picked in desc availability, so biggest line orders could be fulfilled first
@@ -38,15 +39,15 @@ class StockAllocator
 
         // While there are SKUs still unassigned, pick the best warehouse for a batch.
         while (!empty($unassignedSkuLines)) {
-            $pick = $this->pickBestWarehouseForBatch($stockItems, $unassignedSkuLines, $reservation);
+            $bestSingleWh = $this->pickBestWarehouseForBatch($stockItems, $unassignedSkuLines, $reservation);
 
-            if (empty($pick)) {
+            if (empty($bestSingleWh)) {
                 // No warehouse can fully cover any remaining SKU → stop (leave the rest unassigned).
                 break;
             }
 
-            $allocatedWhs[] = $pick;
-            foreach ($pick['skus'] ?? [] as $sku) {
+            $allocWarehouses[] = $bestSingleWh;
+            foreach ($bestSingleWh['skus'] ?? [] as $sku) {
                 unset($unassignedSkuLines[$sku]);
             }
         }
@@ -54,22 +55,51 @@ class StockAllocator
         foreach ($reservation->getLines() as $reservationLine) {
             $isAssigned = false;
 
-            foreach ($allocatedWhs as $allocatedWh) {
-                $newWarehouse = $allocatedWh['warehouse'];
-                $stockItem = $allocatedWh['items'][$reservationLine->getProductSku()] ?? false;
+            foreach ($allocWarehouses as $allocWh) {
+                /** @var $allocStockItem StockItem */
+                $allocStockItem = $allocWh['items'][$reservationLine->getProductSku()] ?? false;
 
                 // Does not exist in the warehouse
-                if (!$stockItem) {
+                if (!$allocStockItem) {
                     continue;
                 }
 
-                /** @var $stockItem StockItem */
-                if ($reservationLine->getStockItem()) {
-                    $reservationLine->releaseFromStock();
+                // Release stock if it warehouses changed
+                if ($reservationLine->getReservedQty() > 0) {
+                    $currentWhId = $reservationLine->getWarehouse()->getId();
+                    $newWhId = $allocStockItem->getWarehouse()->getId();
+
+                    $isAllocatedOnNewWarehouse = $currentWhId != $newWhId;
+
+                    if ($isAllocatedOnNewWarehouse) {
+                        $this->stockRepo->releaseAtomically(
+                            $reservationLine->getWarehouse()->getId(),
+                            $reservationLine->getProductSku(),
+                            $reservationLine->getReservedQty(),
+                        );
+                    }
                 }
 
-                $reservationLine->setStockItem($stockItem);
-                $reservationLine->reserveOnStock();
+                // Refresh stock item to get current database state before atomic reservation
+                $this->stockRepo->getEntityManager()->refresh($allocStockItem);
+
+                $reservationLine->setStockItem($allocStockItem);
+
+                // Use atomic reservation to prevent race conditions
+                $warehouseId = $allocStockItem->getWarehouse()->getId();
+                $sku = $reservationLine->getProductSku();
+                $orderedQty = $reservationLine->getOrderedQty();
+
+                $reservedQty = $this->stockRepo->reserveAtomicallyUpTo($warehouseId, $sku, $orderedQty);
+
+                if ($reservedQty > 0) {
+                    $reservationLine->setReservedQtyAt($reservedQty, $allocStockItem->getWarehouse());
+
+                    // Refresh the stock item entity to reflect the atomic change
+                    $this->stockRepo->getEntityManager()->refresh($allocStockItem);
+                } else {
+                    $reservationLine->setAsOutOfStock();
+                }
 
                 $isAssigned = true;
                 break;
@@ -105,7 +135,7 @@ class StockAllocator
     {
         /** @var StockReservationLine $line */
         foreach ($reservation->getLines() as $line) {
-            if ($this->stockLineCanBeCancelled($line)) {
+            if ($this->stockLineCanBeCancelled($line) && $line->getReservedQty() > 0) {
                 $this->stockRepo->releaseAtomically(
                     $line->getWarehouse()->getId(),
                     $line->getProductSku(),
@@ -164,12 +194,21 @@ class StockAllocator
             }
 
             if ($line && $availQty > 0) {
-                // We need to account for already reserved quantity for that item
-
                 $wareSkuMap[$wCode]['skus'][] = $sku;
                 $wareSkuMap[$wCode]['items'][$sku] = $stockItem;
                 $wareSkuMap[$wCode]['warehouse'] = $stockItem->getWarehouse();
                 $wareSkuMap[$wCode]['item_count'] = ($wareSkuMap[$wCode]['item_count'] ?? 0) + 1;
+
+                // Track if this SKU can be fully covered by this warehouse
+                $requiredQty = $line->getOrderedQty() - $line->getReservedQty();
+                $canFullyCover = $availQty >= $requiredQty;
+
+                if (!isset($wareSkuMap[$wCode]['full_coverage_count'])) {
+                    $wareSkuMap[$wCode]['full_coverage_count'] = 0;
+                }
+                if ($canFullyCover) {
+                    $wareSkuMap[$wCode]['full_coverage_count']++;
+                }
 
                 if (isset($wareSkuMap[$wCode]['lowest_stock'])) {
                     $wareSkuMap[$wCode]['lowest_stock'] = min($wareSkuMap[$wCode]['lowest_stock'], $availQty);
@@ -183,7 +222,24 @@ class StockAllocator
             return null;
         }
 
+        // Prioritize warehouses that can fully cover at least one SKU
+        // Then rank by: full_coverage_count DESC, item_count DESC, lowest_stock DESC
         uasort($wareSkuMap, function (array $a, array $b): int {
+            $aHasFullCoverage = ($a['full_coverage_count'] ?? 0) > 0;
+            $bHasFullCoverage = ($b['full_coverage_count'] ?? 0) > 0;
+
+            // First priority: warehouses with full coverage beat those without
+            if ($aHasFullCoverage !== $bHasFullCoverage) {
+                return $bHasFullCoverage <=> $aHasFullCoverage;
+            }
+
+            // Second priority: among warehouses with/without full coverage, rank by full_coverage_count
+            $fullCoverageDiff = ($b['full_coverage_count'] ?? 0) <=> ($a['full_coverage_count'] ?? 0);
+            if ($fullCoverageDiff !== 0) {
+                return $fullCoverageDiff;
+            }
+
+            // Third priority: item_count, then lowest_stock
             return [$b['item_count'], $b['lowest_stock']]
                 <=> [$a['item_count'], $a['lowest_stock']];
         });
@@ -221,10 +277,11 @@ class StockAllocator
         $targets = $this->resRepo->findByStatusContainingSkus(
             $skus,
             [
-                StockReservationStatus::PENDING,
-                StockReservationStatus::RESERVED_PARTIAL, 
-            StockReservationStatus::RESERVED
-        ],
+                // StockReservationStatus::PENDING, Pending is handled by a separate job.
+                StockReservationStatus::RESERVED_PARTIAL,
+                StockReservationStatus::RESERVED,
+                StockReservationStatus::OUT_OF_STOCK,
+            ],
             limit: $limit
         );
 
