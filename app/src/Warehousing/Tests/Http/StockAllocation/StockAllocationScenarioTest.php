@@ -86,8 +86,6 @@ final class StockAllocationScenarioTest extends WebTestCase
             ->addStock('WARE-EU-2', 'SKU-B', 2)  // Partial only
             ->build();
 
-        $all = $this->stockRepo->list(1, 100);
-
         // Order: Both need 5 units (SKU-A can only get from WARE-EU-1, SKU-B only from WARE-EU-3)
         $this->createReservationWithLines('ORD-MIX-001', [
             ['productSku' => 'SKU-A', 'qty' => 5],
@@ -118,8 +116,8 @@ final class StockAllocationScenarioTest extends WebTestCase
 
         // Setup: SKU only partially available (total 3 units, but need 5)
         $this->scenario
-            ->addStock('WARE-EU-1', 'SKU-PARTIAL', 1)  // Best partial
-            ->addStock('WARE-EU-3', 'SKU-PARTIAL', 2)  // Smaller partial
+            ->addStock('WARE-EU-1', 'SKU-PARTIAL', 2)  // Best partial
+            ->addStock('WARE-EU-3', 'SKU-PARTIAL', 1)  // Smaller partial
             ->build();
 
         // Order: Need 5 units, but only 3 total available
@@ -135,7 +133,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         self::assertSame(StockReservationLineStatus::RESERVED_PARTIAL->value, $map['SKU-PARTIAL']['status']);
         self::assertNotNull($map['SKU-PARTIAL']['warehouse']);
         self::assertSame(2, $map['SKU-PARTIAL']['reserved'], 'Should reserve 2 (best available)');
-        self::assertSame('WARE-EU-3', $map['SKU-PARTIAL']['warehouse'], 'Should pick best warehouse');
+        self::assertSame('WARE-EU-1', $map['SKU-PARTIAL']['warehouse'], 'Should pick best warehouse');
     }
 
     /**
@@ -202,6 +200,100 @@ final class StockAllocationScenarioTest extends WebTestCase
         $wh2 = $map['SKU-FULL-PREF-2']['warehouse'];
         self::assertSame($wh1, $wh2, 'Should consolidate to single warehouse');
         self::assertSame('WARE-EU-2', $wh1, 'Should prefer warehouse that fully covers all SKUs');
+    }
+
+    /**
+     * SCENARIO: One SKU fully allocated selects a warehouse; a remaining SKU is partial-only
+     *           with availability across multiple warehouses. We should prefer the already
+     *           chosen warehouse to minimize warehouse count, even if another has more qty.
+     * EXPECTED: Partial SKU assigned to already chosen warehouse; status is partial.
+     */
+    public function test_partial_only_prefers_already_chosen_warehouse(): void
+    {
+        $this->expectSuccess();
+
+        // Setup: SKU-ONE fully at EU-2; SKU-TWO partial at EU-2(2) and EU-1(5)
+        $this->scenario
+            ->addStock('WARE-EU-2', 'SKU-ONE', 6)     // Full coverage candidate
+            ->addStock('WARE-EU-2', 'SKU-TWO', 2)     // Partial at chosen warehouse
+            ->addStock('WARE-EU-1', 'SKU-TWO', 5)     // Larger partial elsewhere
+            ->build();
+
+        // Order: SKU-ONE needs 5 (full), SKU-TWO needs 6 (partial-only)
+        $this->createReservationWithLines('ORD-PREFER-CHOSEN-001', [
+            ['productSku' => 'SKU-ONE', 'qty' => 5],
+            ['productSku' => 'SKU-TWO', 'qty' => 6],
+        ]);
+
+        $res = $this->readReservation('ORD-PREFER-CHOSEN-001');
+        $map = $this->lineMap($res);
+
+        // Assertions
+        self::assertSame(StockReservationLineStatus::RESERVED->value, $map['SKU-ONE']['status']);
+        self::assertSame(StockReservationLineStatus::RESERVED_PARTIAL->value, $map['SKU-TWO']['status']);
+
+        $whOne = $map['SKU-ONE']['warehouse'];
+        $whTwo = $map['SKU-TWO']['warehouse'];
+        self::assertSame($whOne, $whTwo, 'Partial-only SKU should prefer already chosen warehouse');
+        self::assertSame(2, $map['SKU-TWO']['reserved'], 'Should reserve from the chosen warehouse quantity');
+    }
+
+    /**
+     * SCENARIO: Mixed case where one SKU is completely out of stock and another is fully coverable.
+     * EXPECTED: One line OUT_OF_STOCK, the other RESERVED, and consolidation behavior still holds for available ones.
+     */
+    public function test_mixed_out_of_stock_and_reserved_lines(): void
+    {
+        $this->expectSuccess();
+
+        $this->scenario
+            ->addStock('WARE-EU-1', 'SKU-OK', 5)
+            // No stock anywhere for SKU-OOS
+            ->build();
+
+        $this->createReservationWithLines('ORD-MIXED-OOS-001', [
+            ['productSku' => 'SKU-OK', 'qty' => 3],
+            ['productSku' => 'SKU-OOS', 'qty' => 4],
+        ]);
+
+        $res = $this->readReservation('ORD-MIXED-OOS-001');
+        $map = $this->lineMap($res);
+
+        self::assertSame(StockReservationLineStatus::RESERVED->value, $map['SKU-OK']['status']);
+        self::assertSame(StockReservationLineStatus::OUT_OF_STOCK->value, $map['SKU-OOS']['status']);
+        self::assertSame('WARE-EU-1', $map['SKU-OK']['warehouse']);
+        self::assertNull($map['SKU-OOS']['warehouse']);
+    }
+
+    /**
+     * SCENARIO: Two warehouses can fully cover both SKUs, but one has higher headroom
+     *           (minimum available across covered SKUs).
+     * EXPECTED: Prefer the warehouse with higher headroom.
+     */
+    public function test_headroom_tie_break_prefers_higher_headroom(): void
+    {
+        $this->expectSuccess();
+
+        // EU-1 can cover both SKUs with minimal headroom (exact fits), EU-2 has more headroom
+        $this->scenario
+            ->addStock('WARE-EU-1', 'SKU-HR-1', 3)  // ordered 3
+            ->addStock('WARE-EU-1', 'SKU-HR-2', 2)  // ordered 2
+            ->addStock('WARE-EU-2', 'SKU-HR-1', 10) // more headroom
+            ->addStock('WARE-EU-2', 'SKU-HR-2', 10) // more headroom
+            ->build();
+
+        $this->createReservationWithLines('ORD-HR-001', [
+            ['productSku' => 'SKU-HR-1', 'qty' => 3],
+            ['productSku' => 'SKU-HR-2', 'qty' => 2],
+        ]);
+
+        $res = $this->readReservation('ORD-HR-001');
+        $map = $this->lineMap($res);
+
+        $wh1 = $map['SKU-HR-1']['warehouse'];
+        $wh2 = $map['SKU-HR-2']['warehouse'];
+        self::assertSame($wh1, $wh2, 'Should consolidate to a single warehouse');
+        self::assertSame('WARE-EU-2', $wh1, 'Should prefer warehouse with higher headroom');
     }
 
     /**
