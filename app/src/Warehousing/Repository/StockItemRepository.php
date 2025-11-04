@@ -106,6 +106,50 @@ final class StockItemRepository extends ServiceEntityRepository
     }
 
     /**
+     * Atomically reserve stock up to the requested quantity. Returns the actual quantity reserved.
+     * This method reserves as much as available, up to the requested amount.
+     */
+    public function reserveAtomicallyUpTo(int $warehouseId, string $sku, int $maxQty): int
+    {
+        if ($maxQty <= 0) return 0;
+
+        $conn = $this->getEntityManager()->getConnection();
+        // Use a CTE to calculate available quantity first, then reserve and return the reserved amount
+        $sql = <<<SQL
+            WITH available_calc AS (
+                SELECT
+                    id,
+                    on_hand_qty,
+                    reserved_qty,
+                    GREATEST(0, LEAST(:max_qty, on_hand_qty - reserved_qty)) AS qty_to_reserve
+                FROM stock_items
+                WHERE warehouse_id = :wid
+                  AND product_sku = :sku
+                  AND (on_hand_qty - reserved_qty) > 0
+            ),
+            reservation AS (
+                UPDATE stock_items si
+                SET reserved_qty = si.reserved_qty + ac.qty_to_reserve,
+                    lock_version = si.lock_version + 1,
+                    updated_at = NOW()
+                FROM available_calc ac
+                WHERE si.id = ac.id
+                RETURNING ac.qty_to_reserve AS reserved
+            )
+            SELECT COALESCE(reserved, 0) FROM reservation
+        SQL;
+
+        $result = $conn->executeQuery($sql, [
+            'max_qty' => $maxQty,
+            'wid' => $warehouseId,
+            'sku' => $sku,
+        ]);
+
+        $row = $result->fetchOne();
+        return $row ? (int)$row : 0;
+    }
+
+    /**
      * If you cancel a reservation before shipping.
      */
     public function releaseAtomically(int $warehouseId, string $sku, int $qty): bool
