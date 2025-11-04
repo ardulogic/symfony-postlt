@@ -8,11 +8,13 @@ use App\Warehousing\Entity\StockReservation;
 use App\Warehousing\Messages\StockReservationStatusChangedMessage;
 use App\Warehousing\Repository\StockReservationRepository;
 use App\Warehousing\Tests\DataFixtures\StockReservationTestFixture;
+use App\Warehousing\Tests\Helpers\StockReservationTestHelpers;
 use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 final class StockReservationControllerTest extends WebTestCase
 {
     private StockReservationRepository $repo;
+    use StockReservationTestHelpers;
 
     protected function setUp(): void
     {
@@ -35,12 +37,7 @@ final class StockReservationControllerTest extends WebTestCase
         $reservationNumber = 'ORD-TEST-001';
         $this->requireReservation($reservationNumber);
 
-        $this->client->request('GET', $this->url('stock_reservations_read', ['number' => $reservationNumber]));
-
-        self::assertResponseStatusCodeSame(200);
-
-        $json = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
-        self::assertIsArray($json);
+		$json = $this->readReservation($reservationNumber);
         self::assertSame($reservationNumber, $json['number'] ?? null);
 
         // Lines should be present and an array (fixture has 2)
@@ -79,25 +76,12 @@ final class StockReservationControllerTest extends WebTestCase
         $this->expectSuccess();
 
         $reservationNumber = 'ORD-NEW-001';
-        $payload = [
-            'number' => $reservationNumber,
-            'lines' => [
-                ['productSku' => 'SKU-001', 'qty' => 2],
-                ['productSku' => 'SKU-002', 'qty' => 1],
-            ],
-        ];
-
-        $createUrl = $this->url('stock_reservations_create');
         $readUrl = $this->url('stock_reservations_read', ['number' => $reservationNumber]);
 
-        $this->client->request(
-            'POST',
-            $createUrl,
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode($payload, JSON_THROW_ON_ERROR)
-        );
-
-        self::assertResponseStatusCodeSame(201);
+		$this->createReservationWithLines($reservationNumber, [
+			['productSku' => 'SKU-001', 'qty' => 2],
+			['productSku' => 'SKU-002', 'qty' => 1],
+		]);
 
         $location = $this->client->getResponse()->headers->get('Location');
         self::assertSame($readUrl, parse_url($location, PHP_URL_PATH));
@@ -162,28 +146,12 @@ final class StockReservationControllerTest extends WebTestCase
         $this->expectSuccess();
 
         $reservationNumber = 'ORD-MSG-CREATE-001';
-        $payload = [
-            'number' => $reservationNumber,
-            'lines' => [
-                ['productSku' => 'SKU-001', 'qty' => 2],
-            ],
-        ];
 
-        // Get the transport before creating the reservation
-        $transport = $this->c->get('messenger.transport.async');
-        self::assertInstanceOf(InMemoryTransport::class, $transport);
+		$transport = $this->getTransportAndReset();
 
-        // Clear any existing messages
-        $transport->reset();
-
-        $this->client->request(
-            'POST',
-            $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode($payload, JSON_THROW_ON_ERROR)
-        );
-
-        self::assertResponseStatusCodeSame(201);
+		$this->createReservationWithLines($reservationNumber, [
+			['productSku' => 'SKU-001', 'qty' => 2],
+		]);
 
         // Verify reservation was created
         $reservation = $this->repo->findOneByNumber($reservationNumber);
@@ -218,36 +186,18 @@ final class StockReservationControllerTest extends WebTestCase
         $this->expectSuccess();
 
         $reservationNumber = 'ORD-MSG-CANCEL-001';
-        $payload = [
-            'number' => $reservationNumber,
-            'lines' => [
-                ['productSku' => 'SKU-001', 'qty' => 1],
-            ],
-        ];
 
-        // Create a reservation first
-        $this->client->request(
-            'POST',
-            $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode($payload, JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+		// Create a reservation first
+		$this->createReservationWithLines($reservationNumber, [
+			['productSku' => 'SKU-001', 'qty' => 1],
+		]);
 
         // Get the transport and clear messages from creation
         $this->client->disableReboot(); // On requests like these we must disable kernel reboot which clears sent msgs
-        $transport = $this->c->get('messenger.transport.async');
-        self::assertInstanceOf(InMemoryTransport::class, $transport);
-        $transport->reset();
+		$transport = $this->getTransportAndReset();
 
         // Cancel the reservation
-        $this->client->request(
-            'PUT',
-            $this->url('stock_reservations_cancel', ['number' => $reservationNumber]),
-            server: ['CONTENT_TYPE' => 'application/json']
-        );
-
-        self::assertResponseStatusCodeSame(202);
+		$this->cancelReservation($reservationNumber, 202);
 
         // Verify message was dispatched
         $sent = $transport->getSent();
@@ -276,36 +226,18 @@ final class StockReservationControllerTest extends WebTestCase
         $this->expectSuccess();
 
         $reservationNumber = 'ORD-MSG-SHIP-001';
-        $payload = [
-            'number' => $reservationNumber,
-            'lines' => [
-                ['productSku' => 'SKU-001', 'qty' => 1],
-            ],
-        ];
 
-        // Create a reservation first
-        $this->client->request(
-            'POST',
-            $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode($payload, JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+		// Create a reservation first
+		$this->createReservationWithLines($reservationNumber, [
+			['productSku' => 'SKU-001', 'qty' => 1],
+		]);
 
         // Get the transport and clear messages from creation
         $this->client->disableReboot();
-        $transport = $this->c->get('messenger.transport.async');
-        self::assertInstanceOf(InMemoryTransport::class, $transport);
-        $transport->reset();
+		$transport = $this->getTransportAndReset();
 
         // Ship the reservation
-        $this->client->request(
-            'POST',
-            $this->url('stock_reservations_ship', ['number' => $reservationNumber]),
-            server: ['CONTENT_TYPE' => 'application/json']
-        );
-
-        self::assertResponseStatusCodeSame(202);
+		$this->shipReservation($reservationNumber, 202);
 
         // Verify message was dispatched
         $sent = $transport->getSent();
@@ -341,4 +273,12 @@ final class StockReservationControllerTest extends WebTestCase
             "Fixture missing Order $number"
         );
     }
+
+	private function getTransportAndReset(): InMemoryTransport
+	{
+		$transport = $this->c->get('messenger.transport.async');
+		self::assertInstanceOf(InMemoryTransport::class, $transport);
+		$transport->reset();
+		return $transport;
+	}
 }
