@@ -28,6 +28,8 @@ class StockAllocator
     {
         // Required quantities per SKU.
         $unassignedSkuLines = $this->extractReservationLinesBySku($reservation);
+        // Prioritize bigger orders first (helps consolidation)
+        $this->sortSkuLinesByOrderedQtyDesc($unassignedSkuLines);
 
         // Array of allocated warehouses
         $allocatedWhs = [];
@@ -36,18 +38,76 @@ class StockAllocator
         // Stock items are picked in desc availability, so biggest line orders could be fulfilled first
         $stockItems = $this->stockRepo->getBySkusSortedByDescAvailability(array_keys($unassignedSkuLines));
 
-        // While there are SKUs still unassigned, pick the best warehouse for a batch.
+        // While there are SKUs still unassigned, pick the best warehouse that fully covers
+        // the most SKUs in one shot (no split per SKU in this phase).
         while (!empty($unassignedSkuLines)) {
-            $pick = $this->pickBestWarehouseForBatch($stockItems, $unassignedSkuLines, $reservation);
+            $pick = $this->pickBestWarehouseForBatch($stockItems, $unassignedSkuLines);
 
             if (empty($pick)) {
-                // No warehouse can fully cover any remaining SKU → stop (leave the rest unassigned).
+                // No warehouse can fully cover any remaining SKU → stop; we'll handle partial-only SKUs later.
                 break;
             }
 
             $allocatedWhs[] = $pick;
             foreach ($pick['skus'] ?? [] as $sku) {
                 unset($unassignedSkuLines[$sku]);
+            }
+        }
+
+        // Second pass: For any remaining SKUs (partial-only scenarios), assign each SKU
+        // to a single best warehouse (prefer already chosen warehouses to minimize count).
+        if (!empty($unassignedSkuLines)) {
+            // Build a quick index of existing allocations by warehouse code for augmentation.
+            $allocByCode = [];
+            foreach ($allocatedWhs as $idx => $bundle) {
+                $code = $bundle['warehouse']->getCode();
+                $allocByCode[$code] = $idx;
+            }
+
+            foreach ($unassignedSkuLines as $sku => $line) {
+                // Gather candidate StockItems for this SKU
+                $candidates = [];
+                foreach ($stockItems as $si) {
+                    if ($si->getProductSku() === $sku && $si->getAvailableQty() > 0) {
+                        $candidates[] = $si;
+                    }
+                }
+
+                if (!$candidates) {
+                    // Leave unassigned; will be marked OUT_OF_STOCK below
+                    continue;
+                }
+
+                // Prefer already-chosen warehouses
+                $preferred = array_filter(
+                    $candidates,
+                    static function (StockItem $si) use ($allocByCode): bool {
+                        return array_key_exists($si->getWarehouse()->getCode(), $allocByCode);
+                    }
+                );
+
+                $pool = $preferred ?: $candidates;
+
+                // Pick the candidate with the highest available qty
+                usort($pool, static function (StockItem $a, StockItem $b): int {
+                    return $b->getAvailableQty() <=> $a->getAvailableQty();
+                });
+
+                $best = $pool[0];
+                $wCode = $best->getWarehouse()->getCode();
+
+                if (isset($allocByCode[$wCode])) {
+                    $idx = $allocByCode[$wCode];
+                    $allocatedWhs[$idx]['skus'][] = $sku;
+                    $allocatedWhs[$idx]['items'][$sku] = $best;
+                } else {
+                    $allocatedWhs[] = [
+                        'skus'      => [$sku],
+                        'items'     => [$sku => $best],
+                        'warehouse' => $best->getWarehouse(),
+                    ];
+                    $allocByCode[$wCode] = array_key_last($allocatedWhs);
+                }
             }
         }
 
@@ -126,7 +186,7 @@ class StockAllocator
      * Pick the "best" warehouse for the current batch of still-needed SKUs.
      *
      * Strategy:
-     *   - Build a per-warehouse map of SKUs that have any available qty (>0).
+     *   - Build a per-warehouse map of SKUs that are FULLY coverable (avail >= ordered).
      *   - Track:
      *       * skus[]        → list of SKUs this warehouse can contribute to (even partially)
      *       * items[sku]    → the StockItem object for that SKU in this warehouse
@@ -134,7 +194,7 @@ class StockAllocator
      *       * item_count    → how many SKUs this warehouse touches (used for ranking)
      *       * lowest_stock  → the minimum available quantity across the SKUs it touches
      *   - Sort warehouses by:
-     *       1) item_count DESC  (covers the most SKUs)
+     *       1) item_count DESC  (covers the most SKUs fully)
      *       2) lowest_stock DESC (more headroom among the covered SKUs)
      *   - Return the top-ranked warehouse "bundle" (or null if none can help).
      *
@@ -163,14 +223,14 @@ class StockAllocator
                 }
             }
 
-            if ($line && $availQty > 0) {
-                // We need to account for already reserved quantity for that item
-
+            if ($line && $availQty >= $line->getOrderedQty()) {
+                // Only consider full coverage in this phase
                 $wareSkuMap[$wCode]['skus'][] = $sku;
                 $wareSkuMap[$wCode]['items'][$sku] = $stockItem;
                 $wareSkuMap[$wCode]['warehouse'] = $stockItem->getWarehouse();
                 $wareSkuMap[$wCode]['item_count'] = ($wareSkuMap[$wCode]['item_count'] ?? 0) + 1;
 
+                // Track the minimum available qty among its fully covered SKUs (headroom proxy)
                 if (isset($wareSkuMap[$wCode]['lowest_stock'])) {
                     $wareSkuMap[$wCode]['lowest_stock'] = min($wareSkuMap[$wCode]['lowest_stock'], $availQty);
                 } else {
