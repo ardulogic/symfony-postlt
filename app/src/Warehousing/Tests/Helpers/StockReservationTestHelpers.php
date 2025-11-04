@@ -109,6 +109,23 @@ trait StockReservationTestHelpers
     }
 
     /**
+     * Create a reservation with multiple lines via API.
+     */
+    protected function createReservationWithLines(string $number, array $lines): void
+    {
+        $this->client->request(
+            'POST',
+            $this->url('stock_reservations_create'),
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: json_encode([
+                'number' => $number,
+                'lines' => $lines,
+            ], JSON_THROW_ON_ERROR)
+        );
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    /**
      * Cancel a reservation via API and return status code
      */
     protected function cancelReservation(string $number): int
