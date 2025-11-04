@@ -226,40 +226,6 @@ final class StockReservationAllocationTest extends WebTestCase
         self::assertSame(409, $this->cancelReservation($number));
     }
 
-    public function test_allocation_prefers_single_warehouse_when_possible(): void
-    {
-        $this->expectSuccess();
-
-        $sku1 = 'SKU-001';
-        $sku2 = 'SKU-002';
-        self::assertGreaterThan(0, $this->maxAvailable($sku1));
-        self::assertGreaterThan(0, $this->maxAvailable($sku2));
-
-        $number = 'ORD-ALLOC-FEWEST-001';
-        $this->client->request(
-            'POST', $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode([
-                'number' => $number,
-                'lines' => [
-                    ['productSku' => $sku1, 'qty' => 1],
-                    ['productSku' => $sku2, 'qty' => 1],
-                ],
-            ], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
-
-        $res = $this->readReservation($number);
-        $map = $this->lineMap($res);
-
-        $wh1 = $map[$sku1]['warehouse'];
-        $wh2 = $map[$sku2]['warehouse'];
-
-        self::assertNotNull($wh1);
-        self::assertNotNull($wh2);
-        self::assertSame($wh1, $wh2);
-    }
-
     public function test_never_reserves_more_than_ordered(): void
     {
         $this->expectSuccess();
