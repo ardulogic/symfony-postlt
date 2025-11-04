@@ -22,7 +22,6 @@ final class StockReservationService
         private EntityManagerInterface     $em,
         private StockReservationRepository $repo,
         private StockItemRepository        $stockRepo,
-        private StockReservationRepository $resRepo,
         private ValidatorInterface         $validator,
         private StockAllocator             $allocator, // autowired
         private StockShipper               $shipper, // autowired
@@ -94,7 +93,7 @@ final class StockReservationService
         $shippedReservation = $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($reservation, $allowPartial): StockReservation {
             $reservation = $this->shipper->shipReservation($reservation);
 
-            $this->resRepo->update($reservation);
+            $this->repo->update($reservation);
 
             return $reservation;
         });
