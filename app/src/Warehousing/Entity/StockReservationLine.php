@@ -122,24 +122,13 @@ class StockReservationLine
     {
         $this->setWarehouse($warehouse);
         $this->setReservedQty($qty);
+
+        $this->recomputeStatus();
     }
 
     public function setShippedQty(int $qty): void
     {
         $this->qtyShipped = $qty;
-    }
-
-    public function setReservedQtyDelta(int $delta): void
-    {
-        $this->setReservedQty($this->qtyReserved + $delta);
-    }
-
-    public function shipFromReserved(int $qty): void
-    {
-        if ($qty <= 0 || $qty > $this->qtyReserved) throw new \DomainException('Invalid ship qty');
-        $this->qtyReserved -= $qty;
-        $this->qtyShipped += $qty;
-        if ($this->qtyShipped > $this->qtyOrdered) throw new \DomainException('qtyShipped > qtyOrdered');
 
         $this->recomputeStatus();
     }
