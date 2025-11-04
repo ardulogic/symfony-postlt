@@ -128,7 +128,7 @@ trait StockReservationTestHelpers
     /**
      * Cancel a reservation via API and return status code
      */
-    protected function cancelReservation(string $number): int
+    protected function cancelReservation(string $number, int $expectedStatus = 202): int
     {
         $this->client->request(
             'PUT',
@@ -136,13 +136,15 @@ trait StockReservationTestHelpers
             server: ['CONTENT_TYPE' => 'application/json']
         );
 
-        return $this->client->getResponse()->getStatusCode();
+        $status = $this->client->getResponse()->getStatusCode();
+        self::assertSame($expectedStatus, $status);
+        return $status;
     }
 
     /**
      * Ship a reservation via API and return status code
      */
-    protected function shipReservation(string $number): int
+    protected function shipReservation(string $number, int $expectedStatus = 202): int
     {
         $this->client->request(
             'POST',
@@ -150,7 +152,9 @@ trait StockReservationTestHelpers
             server: ['CONTENT_TYPE' => 'application/json']
         );
 
-        return $this->client->getResponse()->getStatusCode();
+        $status = $this->client->getResponse()->getStatusCode();
+        self::assertSame($expectedStatus, $status);
+        return $status;
     }
 }
 

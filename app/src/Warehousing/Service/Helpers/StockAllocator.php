@@ -166,11 +166,14 @@ class StockAllocator
         /** @var StockReservationLine $line */
         foreach ($reservation->getLines() as $line) {
             if ($this->stockLineCanBeCancelled($line)) {
-                $this->stockRepo->releaseAtomically(
-                    $line->getWarehouse()->getId(),
-                    $line->getProductSku(),
-                    $line->getReservedQty()
-                );
+                // Pending line might not have warehouse assigned
+                if (null !== $line->getWarehouse()) {
+                    $this->stockRepo->releaseAtomically(
+                        $line->getWarehouse()->getId(),
+                        $line->getProductSku(),
+                        $line->getReservedQty()
+                    );
+                }
 
                 $line->cancel();
             }
@@ -280,7 +283,11 @@ class StockAllocator
 
         $targets = $this->resRepo->findByStatusContainingSkus(
             $skus,
-            [StockReservationStatus::RESERVED_PARTIAL, StockReservationStatus::RESERVED],
+            [   // Pending is allocated via different job
+                StockReservationStatus::RESERVED_PARTIAL,
+                StockReservationStatus::RESERVED,
+                StockReservationStatus::OUT_OF_STOCK,
+            ],
             limit: $limit
         );
 

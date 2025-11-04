@@ -37,6 +37,7 @@ final class StockAllocationScenarioTest extends WebTestCase
      * SCENARIO: Both SKUs are fully available at WARE-EU-2.
      * EXPECTED: Should consolidate to single warehouse (WARE-EU-2) even though
      *           other warehouses have stock, because consolidation minimizes warehouse count.
+     * @throws \JsonException
      */
     public function test_prefers_single_warehouse_when_all_skus_fully_available_at_same_warehouse(): void
     {
@@ -74,6 +75,7 @@ final class StockAllocationScenarioTest extends WebTestCase
     /**
      * SCENARIO: SKU-A only fully available at WARE-EU-1, SKU-B only fully available at WARE-EU-3.
      * EXPECTED: Must use 2 warehouses (no split per SKU), but should use minimum possible.
+     * @throws \JsonException
      */
     public function test_uses_minimum_warehouses_when_skus_require_different_warehouses(): void
     {
@@ -110,6 +112,7 @@ final class StockAllocationScenarioTest extends WebTestCase
     /**
      * SCENARIO: SKU only has partial availability across all warehouses (total 3 units, need 5).
      * EXPECTED: Should assign to single warehouse with best availability (no split), partial reservation.
+     * @throws \JsonException
      */
     public function test_assigns_partial_sku_to_single_best_warehouse_without_split(): void
     {
@@ -141,6 +144,7 @@ final class StockAllocationScenarioTest extends WebTestCase
     /**
      * SCENARIO: Two warehouses can fully cover both SKUs equally.
      * EXPECTED: Should consolidate to single warehouse (deterministic tie-break).
+     * @throws \JsonException
      */
     public function test_tie_break_consolidates_to_single_warehouse_when_multiple_can_cover(): void
     {
@@ -174,6 +178,7 @@ final class StockAllocationScenarioTest extends WebTestCase
     /**
      * SCENARIO: One warehouse can fully cover all SKUs, another can only partially cover some.
      * EXPECTED: Should prefer the warehouse that fully covers all SKUs.
+     * @throws \JsonException
      */
     public function test_prefers_warehouse_that_fully_covers_all_skus_over_partial_coverage(): void
     {
@@ -209,6 +214,7 @@ final class StockAllocationScenarioTest extends WebTestCase
      *           with availability across multiple warehouses. We should prefer the already
      *           chosen warehouse to minimize warehouse count, even if another has more qty.
      * EXPECTED: Partial SKU assigned to already chosen warehouse; status is partial.
+     * @throws \JsonException
      */
     public function test_partial_only_prefers_already_chosen_warehouse(): void
     {
@@ -243,6 +249,7 @@ final class StockAllocationScenarioTest extends WebTestCase
     /**
      * SCENARIO: Mixed case where one SKU is completely out of stock and another is fully coverable.
      * EXPECTED: One line OUT_OF_STOCK, the other RESERVED, and consolidation behavior still holds for available ones.
+     * @throws \JsonException
      */
     public function test_mixed_out_of_stock_and_reserved_lines(): void
     {
@@ -271,6 +278,7 @@ final class StockAllocationScenarioTest extends WebTestCase
      * SCENARIO: Two warehouses can fully cover both SKUs, but one has higher headroom
      *           (minimum available across covered SKUs).
      * EXPECTED: Prefer the warehouse with higher headroom.
+     * @throws \JsonException
      */
     public function test_headroom_tie_break_prefers_higher_headroom(): void
     {
@@ -301,6 +309,7 @@ final class StockAllocationScenarioTest extends WebTestCase
     /**
      * SCENARIO: Single SKU has sufficient stock in one warehouse.
      * EXPECTED: Line RESERVED with exact qty; some warehouse assigned.
+     * @throws \JsonException
      */
     public function test_single_sku_full_allocation_in_single_warehouse(): void
     {
@@ -327,6 +336,7 @@ final class StockAllocationScenarioTest extends WebTestCase
     /**
      * SCENARIO: Single SKU has no stock anywhere.
      * EXPECTED: Reservation OUT_OF_STOCK, line OUT_OF_STOCK, no warehouse.
+     * @throws \JsonException
      */
     public function test_single_sku_zero_stock_sets_out_of_stock_statuses(): void
     {
@@ -351,6 +361,7 @@ final class StockAllocationScenarioTest extends WebTestCase
     /**
      * SCENARIO: Reading reservation multiple times must not mutate reserved quantities.
      * EXPECTED: Reserved qty remains identical across reads.
+     * @throws \JsonException
      */
     public function test_idempotency_read_does_not_change_reserved_quantities(): void
     {
@@ -376,6 +387,7 @@ final class StockAllocationScenarioTest extends WebTestCase
     /**
      * SCENARIO: Cancel a fully reserved single-line reservation.
      * EXPECTED: Line and reservation set to CANCELED; reserved released back to stock.
+     * @throws \JsonException
      */
     public function test_cancel_full_reservation_releases_stock_and_sets_status_canceled(): void
     {
@@ -390,8 +402,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         $availBefore = $this->availableAt($sku, 'WARE-EU-1');
 
         $this->createReservationWithLines($number, [['productSku' => $sku, 'qty' => 2]]);
-
-        self::assertSame(202, $this->cancelReservation($number));
+        $this->cancelReservation($number);
 
         $after = $this->readReservation($number);
         $line = $this->lineMap($after)[$sku];
@@ -408,6 +419,7 @@ final class StockAllocationScenarioTest extends WebTestCase
     /**
      * SCENARIO: Cancel a partially reserved single-line reservation (requested > available).
      * EXPECTED: Line and reservation set to CANCELED; reserved released back to pool.
+     * @throws \JsonException
      */
     public function test_cancel_partial_reservation_releases_reserved_and_sets_status_canceled(): void
     {
@@ -427,7 +439,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         $map = $this->lineMap($created);
         self::assertSame(StockReservationLineStatus::RESERVED_PARTIAL->value, $map[$sku]['status']);
 
-        self::assertSame(202, $this->cancelReservation($number));
+        $this->cancelReservation($number);
 
         $after = $this->readReservation($number);
         $line = $this->lineMap($after)[$sku];
@@ -443,6 +455,7 @@ final class StockAllocationScenarioTest extends WebTestCase
     /**
      * SCENARIO: Cancel the same reservation twice.
      * EXPECTED: First cancel 202, second cancel 409 Conflict, state unchanged.
+     * @throws \JsonException
      */
     public function test_cancel_second_time_returns_conflict_and_does_not_change_state(): void
     {
@@ -457,13 +470,14 @@ final class StockAllocationScenarioTest extends WebTestCase
 
         $this->createReservationWithLines($number, [['productSku' => $sku, 'qty' => 1]]);
 
-        self::assertSame(202, $this->cancelReservation($number));
-        self::assertSame(409, $this->cancelReservation($number));
+        $this->cancelReservation($number, 202);
+        $this->cancelReservation($number, 409);
     }
 
     /**
      * SCENARIO: Ordered quantity is less than available.
      * EXPECTED: Never reserves more than ordered across reads.
+     * @throws \JsonException
      */
     public function test_never_reserves_more_than_ordered(): void
     {
