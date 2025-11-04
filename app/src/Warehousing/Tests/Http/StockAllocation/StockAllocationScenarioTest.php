@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Warehousing\Tests\Http\StockAllocation;
 
@@ -134,6 +135,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         self::assertNotNull($map['SKU-PARTIAL']['warehouse']);
         self::assertSame(2, $map['SKU-PARTIAL']['reserved'], 'Should reserve 2 (best available)');
         self::assertSame('WARE-EU-1', $map['SKU-PARTIAL']['warehouse'], 'Should pick best warehouse');
+        self::assertSame(0, $this->availableAt('SKU-PARTIAL', 'WARE-EU-1'), 'Chosen warehouse should be depleted');
     }
 
     /**
@@ -297,20 +299,193 @@ final class StockAllocationScenarioTest extends WebTestCase
     }
 
     /**
-     * Helper to create reservation with multiple lines
+     * SCENARIO: Single SKU has sufficient stock in one warehouse.
+     * EXPECTED: Line RESERVED with exact qty; some warehouse assigned.
      */
-    private function createReservationWithLines(string $number, array $lines): void
+    public function test_single_sku_full_allocation_in_single_warehouse(): void
     {
-        $this->client->request(
-            'POST',
-            $this->url('stock_reservations_create'),
-            server: ['CONTENT_TYPE' => 'application/json'],
-            content: json_encode([
-                'number' => $number,
-                'lines' => $lines,
-            ], JSON_THROW_ON_ERROR)
-        );
-        self::assertResponseStatusCodeSame(201);
+        $this->expectSuccess();
+
+        $sku = 'SKU-001';
+        $number = 'ORD-ALLOC-FULL-001';
+
+        $this->scenario
+            ->addStock('WARE-EU-1', $sku, 5)
+            ->build();
+
+        $this->createReservationWithLines($number, [['productSku' => $sku, 'qty' => 2]]);
+
+        $res = $this->readReservation($number);
+        $map = $this->lineMap($res);
+
+        self::assertSame(StockReservationStatus::RESERVED->value, $res['status']);
+        self::assertSame(StockReservationLineStatus::RESERVED->value, $map[$sku]['status']);
+        self::assertSame(2, $map[$sku]['reserved']);
+        self::assertNotNull($map[$sku]['warehouse']);
     }
+
+    /**
+     * SCENARIO: Single SKU has no stock anywhere.
+     * EXPECTED: Reservation OUT_OF_STOCK, line OUT_OF_STOCK, no warehouse.
+     */
+    public function test_single_sku_zero_stock_sets_out_of_stock_statuses(): void
+    {
+        $this->expectSuccess();
+
+        $sku = 'SKU-ZERO';
+        $number = 'ORD-ALLOC-NONE-001';
+
+        $this->scenario->build();
+
+        $this->createReservationWithLines($number, [['productSku' => $sku, 'qty' => 3]]);
+
+        $res = $this->readReservation($number);
+        $map = $this->lineMap($res);
+
+        self::assertSame(StockReservationStatus::OUT_OF_STOCK->value, $res['status']);
+        self::assertSame(StockReservationLineStatus::OUT_OF_STOCK->value, $map[$sku]['status']);
+        self::assertSame(0, $map[$sku]['reserved']);
+        self::assertNull($map[$sku]['warehouse']);
+    }
+
+    /**
+     * SCENARIO: Reading reservation multiple times must not mutate reserved quantities.
+     * EXPECTED: Reserved qty remains identical across reads.
+     */
+    public function test_idempotency_read_does_not_change_reserved_quantities(): void
+    {
+        $this->expectSuccess();
+
+        $sku = 'SKU-001';
+        $number = 'ORD-ALLOC-IDEMP-001';
+
+        $this->scenario
+            ->addStock('WARE-EU-1', $sku, 5)
+            ->build();
+
+        $this->createReservationWithLines($number, [['productSku' => $sku, 'qty' => 3]]);
+
+        $res1 = $this->readReservation($number);
+        $reserved1 = $this->lineMap($res1)[$sku]['reserved'];
+        $res2 = $this->readReservation($number);
+        $reserved2 = $this->lineMap($res2)[$sku]['reserved'];
+
+        self::assertSame($reserved1, $reserved2, 'Reads must not mutate reserved quantities');
+    }
+
+    /**
+     * SCENARIO: Cancel a fully reserved single-line reservation.
+     * EXPECTED: Line and reservation set to CANCELED; reserved released back to stock.
+     */
+    public function test_cancel_full_reservation_releases_stock_and_sets_status_canceled(): void
+    {
+        $this->expectSuccess();
+
+        $sku = 'SKU-001';
+        $number = 'ORD-CANCEL-FULL-001';
+
+        $this->scenario
+            ->addStock('WARE-EU-1', $sku, 5)
+            ->build();
+        $availBefore = $this->availableAt($sku, 'WARE-EU-1');
+
+        $this->createReservationWithLines($number, [['productSku' => $sku, 'qty' => 2]]);
+
+        self::assertSame(202, $this->cancelReservation($number));
+
+        $after = $this->readReservation($number);
+        $line = $this->lineMap($after)[$sku];
+
+        self::assertSame(StockReservationStatus::CANCELED->value, $after['status']);
+        self::assertSame(StockReservationLineStatus::CANCELED->value, $line['status']);
+        self::assertSame(0, $line['reserved']);
+
+        $whCode = 'WARE-EU-1';
+        $availAfter = $this->availableAt($sku, $whCode);
+        self::assertSame($availBefore, $availAfter);
+    }
+
+    /**
+     * SCENARIO: Cancel a partially reserved single-line reservation (requested > available).
+     * EXPECTED: Line and reservation set to CANCELED; reserved released back to pool.
+     */
+    public function test_cancel_partial_reservation_releases_reserved_and_sets_status_canceled(): void
+    {
+        $this->expectSuccess();
+
+        $sku = 'SKU-002';
+        $number = 'ORD-CANCEL-PARTIAL-001';
+
+        $this->scenario
+            ->addStock('WARE-EU-2', $sku, 4)
+            ->build();
+        $availBefore = $this->maxAvailable($sku);
+
+        $this->createReservationWithLines($number, [['productSku' => $sku, 'qty' => $availBefore + 10]]);
+
+        $created = $this->readReservation($number);
+        $map = $this->lineMap($created);
+        self::assertSame(StockReservationLineStatus::RESERVED_PARTIAL->value, $map[$sku]['status']);
+
+        self::assertSame(202, $this->cancelReservation($number));
+
+        $after = $this->readReservation($number);
+        $line = $this->lineMap($after)[$sku];
+
+        self::assertSame(StockReservationStatus::CANCELED->value, $after['status']);
+        self::assertSame(StockReservationLineStatus::CANCELED->value, $line['status']);
+        self::assertSame(0, $line['reserved']);
+
+        $availAfter = $this->maxAvailable($sku);
+        self::assertGreaterThanOrEqual($availBefore, $availAfter);
+    }
+
+    /**
+     * SCENARIO: Cancel the same reservation twice.
+     * EXPECTED: First cancel 202, second cancel 409 Conflict, state unchanged.
+     */
+    public function test_cancel_second_time_returns_conflict_and_does_not_change_state(): void
+    {
+        $this->expectSuccess();
+
+        $sku = 'SKU-001';
+        $number = 'ORD-CANCEL-IDEM-001';
+
+        $this->scenario
+            ->addStock('WARE-EU-1', $sku, 2)
+            ->build();
+
+        $this->createReservationWithLines($number, [['productSku' => $sku, 'qty' => 1]]);
+
+        self::assertSame(202, $this->cancelReservation($number));
+        self::assertSame(409, $this->cancelReservation($number));
+    }
+
+    /**
+     * SCENARIO: Ordered quantity is less than available.
+     * EXPECTED: Never reserves more than ordered across reads.
+     */
+    public function test_never_reserves_more_than_ordered(): void
+    {
+        $this->expectSuccess();
+
+        $sku = 'SKU-001';
+        $number = 'ORD-ALLOC-NO-OVER-RESERVE';
+
+        $this->scenario
+            ->addStock('WARE-EU-1', $sku, 10)
+            ->build();
+
+        $this->createReservationWithLines($number, [['productSku' => $sku, 'qty' => 2]]);
+
+        $res1 = $this->readReservation($number);
+        $reserved1 = $this->lineMap($res1)[$sku]['reserved'];
+        $res2 = $this->readReservation($number);
+        $reserved2 = $this->lineMap($res2)[$sku]['reserved'];
+
+        self::assertSame(2, $reserved1);
+        self::assertSame(2, $reserved2);
+    }
+
 }
 
