@@ -104,7 +104,7 @@ final class StockAllocationScenarioTest extends WebTestCase
 
         $whA = $map['SKU-A']['warehouse'];
         $whB = $map['SKU-B']['warehouse'];
-        self::assertNotSame($whA, $whB, 'Different warehouses required when SKUs have no overlap');
+        self::assertNotSame($whA, $whB, 'It should assign on different warehouses');
         self::assertSame('WARE-EU-1', $whA, 'SKU-A must come from WARE-EU-1 (only full coverage)');
         self::assertSame('WARE-EU-3', $whB, 'SKU-B must come from WARE-EU-3 (only full coverage)');
     }
