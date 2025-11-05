@@ -34,6 +34,8 @@ final class UpdateOrderStatusHandler
         $orderStatus = $this->mapReservationStatusToOrderStatus($message->status);
 
         $this->em->wrapInTransaction(function () use ($order, $orderStatus, $message) {
+            $this->em->clear();
+
             // Set status directly from warehousing - Order does not compute its own status
             if ($orderStatus) {
                 $order->setStatus($orderStatus);
@@ -51,6 +53,8 @@ final class UpdateOrderStatusHandler
      */
     private function updateOrderLinesFromMessage(Order $order, array $warehousingLines): void
     {
+        $this->em->clear();
+
         // Create a map of SKU to warehousing line data for quick lookup
         $warehousingLineMap = [];
         foreach ($warehousingLines as $line) {
@@ -75,6 +79,8 @@ final class UpdateOrderStatusHandler
                 }
             }
         }
+
+        $this->em->flush();
     }
 
     private function mapReservationLineStatusToOrderLineStatus(string $reservationLineStatus): ?OrderLineStatus

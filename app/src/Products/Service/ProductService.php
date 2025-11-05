@@ -23,6 +23,7 @@ final class ProductService
         // we use this layer since the transaction could be much broader
         return $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($product): Product {
             $this->repo->create($product);
+            $this->em->flush();
 
             return $product;
         });
@@ -34,7 +35,7 @@ final class ProductService
         // Wrap in transaction
         // we use this layer since the transaction could be much broader
         return $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($product): Product {
-            $this->repo->update($product);
+            $em->flush();
 
             return $product;
         });
@@ -55,6 +56,7 @@ final class ProductService
         // we use this layer since the transaction could be much broader
         return $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($product): Product {
             $this->repo->delete($product);
+            $this->em->flush();
 
             return $product;
         });

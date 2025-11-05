@@ -58,7 +58,7 @@ final class OrderService
         // Wrap in transaction
         // we use this layer since the transaction could be much broader
         return $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($order): Order {
-            $this->repo->update($order);
+            $em->flush();
 
             return $order;
         });

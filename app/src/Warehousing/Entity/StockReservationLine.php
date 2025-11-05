@@ -93,6 +93,12 @@ class StockReservationLine
         return $this->qtyReserved;
     }
 
+    public function getUnreservedQty(): int
+    {
+        return $this->qtyOrdered - $this->qtyReserved;
+    }
+
+
     public function getShippedQty(): int
     {
         return $this->qtyShipped;
@@ -143,7 +149,6 @@ class StockReservationLine
     public function cancel(): void
     {
         $this->qtyReserved = 0;
-        $this->setWarehouse(null);
 
         $this->status = StockReservationLineStatus::CANCELED->value;
     }

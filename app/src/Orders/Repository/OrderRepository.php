@@ -35,21 +35,10 @@ final class OrderRepository extends ServiceEntityRepository
     {
         $em = $this->getEntityManager();
         $em->persist($entity);   // brand new
-        $em->flush();
-    }
-
-    /**
-     * Expects a MANAGED entity (loaded via this repo).
-     * Just flush tracked changes.
-     */
-    public function update(Order $managed): void
-    {
-        $this->getEntityManager()->flush();
     }
 
     public function delete(Order $order): void
     {
         $this->getEntityManager()->remove($order);
-        $this->getEntityManager()->flush();
     }
 }

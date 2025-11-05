@@ -13,10 +13,10 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 final class StockItemService
 {
     public function __construct(
-        private EntityManagerInterface $em,
-        private WarehouseRepository    $warehouseRepo,
-        private StockItemRepository    $stockItemRepo,
-        private ValidatorInterface     $validator,
+        private EntityManagerInterface  $em,
+        private WarehouseRepository     $warehouseRepo,
+        private StockItemRepository     $stockItemRepo,
+        private ValidatorInterface      $validator,
         private StockReservationService $stockReservationService,
     )
     {
@@ -27,7 +27,13 @@ final class StockItemService
         // Wrap in transaction
         // we use this layer since the transaction could be much broader
         $item = $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($warehouse, $sku, $dto): StockItem {
-            return $this->stockItemRepo->addStock($warehouse->getId(), $sku, $dto->qty);
+            $this->em->clear();
+
+            $stockItem = $this->stockItemRepo->addStock($warehouse->getId(), $sku, $dto->qty);
+
+            $this->em->flush();
+
+            return $stockItem;
         });
 
         // Trigger reallocation for the affected SKU

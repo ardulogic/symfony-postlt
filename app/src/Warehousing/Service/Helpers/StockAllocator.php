@@ -5,17 +5,20 @@ namespace App\Warehousing\Service\Helpers;
 use App\Warehousing\Entity\StockItem;
 use App\Warehousing\Entity\StockReservation;
 use App\Warehousing\Entity\StockReservationLine;
+use App\Warehousing\Entity\Warehouse;
 use App\Warehousing\Enum\StockReservationLineStatus;
 use App\Warehousing\Enum\StockReservationStatus;
 use App\Warehousing\Repository\StockItemRepository;
 use App\Warehousing\Repository\StockReservationRepository;
+use Doctrine\ORM\EntityManagerInterface;
 
 class StockAllocator
 {
 
     public function __construct(
         private StockItemRepository        $stockRepo,
-        private StockReservationRepository $resRepo)
+        private StockReservationRepository $resRepo,
+        private EntityManagerInterface     $em)
     {
     }
 
@@ -25,6 +28,87 @@ class StockAllocator
      * - Keep picking the next best warehouse for remaining items using same strategy
      */
     public function allocateStockToReservationLines(StockReservation $reservation): ?StockReservation
+    {
+        $allocWarehouses = $this->getBestWarehouseAllocMap($reservation);
+
+
+        foreach ($reservation->getLines() as $reservationLine) {
+            $sku = $reservationLine->getProductSku();
+            $prevStockItem = $reservationLine->getStockItem();
+            $prevWarehouse = $reservationLine->getWarehouse();
+            $prevReservedQty = $reservationLine->getReservedQty();
+            $prevWarehouseId = $reservationLine->getWarehouse()?->getId();
+
+            if (null !== $prevStockItem) {
+                $this->em->detach($prevStockItem); // Will prevent from writing stale state
+                $this->em->detach($prevWarehouse);
+            }
+
+            $isAssigned = false;
+
+            foreach ($allocWarehouses as $id => $newWarehouse) {
+                $newWarehouseStock = $newWarehouse['stock'];
+                $newWarehouseId = $newWarehouse['warehouse']->getId();
+                $newStockItem = $newWarehouseStock[$sku] ?? false;
+
+                /* @var $newStockItem StockItem */
+                if (!$newStockItem) {
+                    // This stock item not exist in this warehouse
+                    // continue with another
+                    continue;
+                }
+
+                $this->em->detach($newStockItem);
+                $warehouseIsNotSame = $prevWarehouseId !== $newWarehouseId;
+                $warehouseIsSame = !$warehouseIsNotSame;
+
+                // Release stock if the suggested warehouse has changed
+                if ($warehouseIsNotSame && $prevReservedQty > 0) {
+                    $this->stockRepo->releaseAtomically(
+                        $reservationLine->getWarehouse()->getId(),
+                        $reservationLine->getProductSku(),
+                        $reservationLine->getReservedQty(),
+                    );
+
+                    $reservationLine->setReservedQty(0);
+                }
+
+                // If we reserve from same warehouse we need to deduct already reserved
+                $pendingReservedQty = $warehouseIsSame ?
+                    $reservationLine->getUnreservedQty() : $reservationLine->getOrderedQty();
+
+                $newReservedQty = $this->stockRepo->reserveAtomicallyUpTo($newWarehouseId, $sku, $pendingReservedQty);
+
+                if ($newReservedQty > 0) {
+                    // We don't want to overwrite db with potentially stale warehouse data, so we use this bs:
+                    $newWarehouseRef = $this->em->getReference(Warehouse::class, $newWarehouseId);
+                    $reservationLine->setWarehouse($newWarehouseRef);
+                    $reservationLine->setReservedQty($newReservedQty);
+                } else {
+                    $reservationLine->setAsOutOfStock();
+                }
+
+
+                // We don't want to overwrite db with potentially stale stock item data, so we use this bs:
+                $stockRef = $this->em->getReference(StockItem::class, $newStockItem->getId());
+                $reservationLine->setStockItem($stockRef);
+
+                $isAssigned = true;
+                break;
+            }
+
+            // If no warehouses are assigned, product does not exist in stock at all
+            if (!$isAssigned) {
+                $reservationLine->setAsOutOfStock();
+            }
+        }
+
+        $reservation->recomputeStatus();
+
+        return $reservation;
+    }
+
+    public function getBestWarehouseAllocMap(StockReservation $reservation): array
     {
         // Required quantities per SKU.
         $unassignedSkuLines = $this->extractReservationLinesBySku($reservation);
@@ -47,73 +131,13 @@ class StockAllocator
             }
 
             $allocWarehouses[] = $bestSingleWh;
+
             foreach ($bestSingleWh['skus'] ?? [] as $sku) {
                 unset($unassignedSkuLines[$sku]);
             }
         }
 
-        foreach ($reservation->getLines() as $reservationLine) {
-            $isAssigned = false;
-
-            foreach ($allocWarehouses as $allocWh) {
-                /** @var $allocStockItem StockItem */
-                $allocStockItem = $allocWh['items'][$reservationLine->getProductSku()] ?? false;
-
-                // Does not exist in the warehouse
-                if (!$allocStockItem) {
-                    continue;
-                }
-
-                // Release stock if it warehouses changed
-                if ($reservationLine->getReservedQty() > 0) {
-                    $currentWhId = $reservationLine->getWarehouse()->getId();
-                    $newWhId = $allocStockItem->getWarehouse()->getId();
-
-                    $isAllocatedOnNewWarehouse = $currentWhId != $newWhId;
-
-                    if ($isAllocatedOnNewWarehouse) {
-                        $this->stockRepo->releaseAtomically(
-                            $reservationLine->getWarehouse()->getId(),
-                            $reservationLine->getProductSku(),
-                            $reservationLine->getReservedQty(),
-                        );
-                    }
-                }
-
-                // Refresh stock item to get current database state before atomic reservation
-                $this->stockRepo->getEntityManager()->refresh($allocStockItem);
-
-                $reservationLine->setStockItem($allocStockItem);
-
-                // Use atomic reservation to prevent race conditions
-                $warehouseId = $allocStockItem->getWarehouse()->getId();
-                $sku = $reservationLine->getProductSku();
-                $orderedQty = $reservationLine->getOrderedQty();
-
-                $reservedQty = $this->stockRepo->reserveAtomicallyUpTo($warehouseId, $sku, $orderedQty);
-
-                if ($reservedQty > 0) {
-                    $reservationLine->setReservedQtyAt($reservedQty, $allocStockItem->getWarehouse());
-
-                    // Refresh the stock item entity to reflect the atomic change
-                    $this->stockRepo->getEntityManager()->refresh($allocStockItem);
-                } else {
-                    $reservationLine->setAsOutOfStock();
-                }
-
-                $isAssigned = true;
-                break;
-            }
-
-            // If no warehouses are assigned, product does not exist in stock at all
-            if (!$isAssigned) {
-                $reservationLine->setAsOutOfStock();
-            }
-        }
-
-        $reservation->recomputeStatus();
-
-        return $reservation;
+        return $allocWarehouses;
     }
 
     /**
@@ -129,26 +153,6 @@ class StockAllocator
             // DESC order
             return $b->getOrderedQty() <=> $a->getOrderedQty();
         });
-    }
-
-    public function cancel(StockReservation $reservation): StockReservation
-    {
-        /** @var StockReservationLine $line */
-        foreach ($reservation->getLines() as $line) {
-            if ($this->stockLineCanBeCancelled($line) && $line->getReservedQty() > 0) {
-                $this->stockRepo->releaseAtomically(
-                    $line->getWarehouse()->getId(),
-                    $line->getProductSku(),
-                    $line->getReservedQty()
-                );
-
-                $line->cancel();
-            }
-        }
-
-        $reservation->recomputeStatus();
-
-        return $reservation;
     }
 
 
@@ -195,7 +199,7 @@ class StockAllocator
 
             if ($line && $availQty > 0) {
                 $wareSkuMap[$wCode]['skus'][] = $sku;
-                $wareSkuMap[$wCode]['items'][$sku] = $stockItem;
+                $wareSkuMap[$wCode]['stock'][$sku] = $stockItem;
                 $wareSkuMap[$wCode]['warehouse'] = $stockItem->getWarehouse();
                 $wareSkuMap[$wCode]['item_count'] = ($wareSkuMap[$wCode]['item_count'] ?? 0) + 1;
 
@@ -332,13 +336,4 @@ class StockAllocator
         ]);
     }
 
-    public function stockLineCanBeCancelled(StockReservationLine $reservation): bool
-    {
-        return in_array($reservation->getStatus(), [
-            StockReservationLineStatus::PENDING,
-            StockReservationLineStatus::RESERVED,
-            StockReservationLineStatus::RESERVED_PARTIAL,
-            StockReservationLineStatus::OUT_OF_STOCK,
-        ]);
-    }
 }

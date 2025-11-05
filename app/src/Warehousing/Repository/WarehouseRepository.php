@@ -35,21 +35,10 @@ final class WarehouseRepository extends ServiceEntityRepository
     {
         $em = $this->getEntityManager();
         $em->persist($entity);   // brand new
-        $em->flush();
-    }
-
-    /**
-     * Expects a MANAGED entity (loaded via this repo).
-     * Just flush tracked changes.
-     */
-    public function update(Warehouse $managed): void
-    {
-        $this->getEntityManager()->flush();
     }
 
     public function delete(Warehouse $p): void
     {
         $this->getEntityManager()->remove($p);
-        $this->getEntityManager()->flush();
     }
 }

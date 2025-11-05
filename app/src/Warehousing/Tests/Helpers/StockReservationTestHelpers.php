@@ -4,16 +4,26 @@ namespace App\Warehousing\Tests\Helpers;
 
 use App\Warehousing\Repository\StockItemRepository;
 use App\Warehousing\Repository\StockReservationRepository;
+use App\Warehousing\Service\StockItemService;
+use App\Warehousing\Service\StockReservationService;
 
 trait StockReservationTestHelpers
 {
     protected StockItemRepository $stockRepo;
     protected StockReservationRepository $resRepo;
+    protected StockItemService $stockService;
+    protected StockReservationService $resService;
 
     protected function setUpRepositories(): void
     {
         $this->resRepo = $this->c->get(StockReservationRepository::class);
         $this->stockRepo = $this->c->get(StockItemRepository::class);
+    }
+
+    protected function setUpServices(): void
+    {
+        $this->stockService = $this->c->get(StockItemService::class);
+        $this->resService = $this->c->get(StockReservationService::class);
     }
 
     /**
@@ -30,13 +40,14 @@ trait StockReservationTestHelpers
     /**
      * Map reservation lines by SKU: [sku => [ordered, reserved, warehouse, status]]
      */
-    protected function lineMap(array $reservationJson): array
+    protected function mapReservationBySku(array $reservationJson): array
     {
         $map = [];
         foreach ($reservationJson['lines'] ?? [] as $line) {
             $map[$line['productSku']] = [
                 'ordered' => (int)$line['orderedQty'],
                 'reserved' => (int)$line['reservedQty'],
+                'shipped' => (int)$line['shippedQty'],
                 'warehouse' => $line['warehouse']['code'] ?? null,
                 'status' => $line['status'] ?? null,
             ];
@@ -91,7 +102,7 @@ trait StockReservationTestHelpers
     /**
      * Create a reservation via API and return the response
      */
-    protected function createReservation(string $number, string $sku, int $qty): array
+    protected function createReservation(string $number, string $sku, int $qty, int $expectedCode = 201): array
     {
         $this->client->request(
             'POST',
@@ -103,7 +114,17 @@ trait StockReservationTestHelpers
             ], JSON_THROW_ON_ERROR)
         );
 
-        self::assertResponseStatusCodeSame(201);
+        self::assertResponseStatusCodeSame($expectedCode);
+
+        return json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * @throws \JsonException
+     */
+    protected function createAndReadReservation(string $number, string $sku, int $qty): array
+    {
+        $this->createReservation($number, $sku, $qty);
 
         return $this->readReservation($number);
     }

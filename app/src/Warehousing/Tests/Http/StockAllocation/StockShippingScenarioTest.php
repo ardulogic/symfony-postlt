@@ -24,8 +24,7 @@ final class StockShippingScenarioTest extends WebTestCase
         parent::setUp();
         $this->setUpRepositories();
 
-        $stockItemService = $this->c->get(StockItemService::class);
-        $this->scenario = new StockAllocationScenarioBuilder($this->em, $stockItemService);
+        $this->scenario = new StockAllocationScenarioBuilder($this->em, $this->c);
     }
 
     protected function getRequiredFixtures(): array
@@ -55,13 +54,12 @@ final class StockShippingScenarioTest extends WebTestCase
 
         self::assertSame(202, $this->shipReservation($number));
 
-        $this->em->clear();
         $onHandAfter = $this->onHandAt($whCode, $sku);
         self::assertSame($onHandBefore - $qty, $onHandAfter);
 
         $res = $this->readReservation($number);
         self::assertSame(StockReservationStatus::SHIPPED->value, $res['status']);
-        $map = $this->lineMap($res);
+        $map = $this->mapReservationBySku($res);
         self::assertSame(StockReservationLineStatus::SHIPPED->value, $map[$sku]['status']);
     }
 
@@ -120,7 +118,6 @@ final class StockShippingScenarioTest extends WebTestCase
 
         $this->shipReservation($number, 409);
 
-        $this->em->clear();
         $onHandAfterSecond = $this->onHandAt($wareCode, $sku);
         self::assertSame($onHandAfterFirst, $onHandAfterSecond);
 

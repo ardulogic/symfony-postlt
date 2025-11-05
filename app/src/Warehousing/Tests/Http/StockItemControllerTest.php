@@ -129,7 +129,6 @@ final class StockItemControllerTest extends WebTestCase
         self::assertNotNull($beforeItem);
         $beforeLv = $beforeItem->getLockVersion();
         $beforeOnHand = $beforeItem->getOnHandQty();
-        $this->em->clear();
 
         // act
         $this->receiveStock($warehouseCode, $productSku, 3);

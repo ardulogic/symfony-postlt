@@ -35,9 +35,13 @@ final class StockReservationService
         // Wrap in transaction
         // we use this layer since the transaction could be much broader
         $savedReservation = $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($reservation): StockReservation {
+            $this->em->clear();
+
             $this->allocator->allocateStockToReservationLines($reservation);
 
             $this->repo->create($reservation);
+
+            $this->em->flush();
 
             return $reservation;
         });
@@ -50,36 +54,49 @@ final class StockReservationService
 
     public function cancel(StockReservation $reservation): ?StockReservation
     {
-        $updated = $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($reservation): StockReservation {
+        [$reservation, $affectedSkus] = $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($reservation): array {
+            $this->em->clear();
+            $reservation = $em->find(StockReservation::class, $reservation->getId());
+
             if ($reservation->getStatus() === StockReservationStatus::CANCELED->value) {
                 throw new StockReservationAlreadyCancelledException();
             }
 
-            $this->allocator->cancel($reservation); // This calls recomputeStatus() internally
+            $affectedSkus = [];
 
-            $this->repo->update($reservation);
+            // Release all items from stock repo atomically
+            foreach ($reservation->getLines() as $line) {
+                if ($this->repo->stockLineCanBeCancelled($line) && $line->getReservedQty() > 0) {
+                    $this->stockRepo->releaseAtomically(
+                        $line->getWarehouse()->getId(),
+                        $line->getProductSku(),
+                        $line->getReservedQty()
+                    );
 
-            return $reservation;
+                    $affectedSkus[$line->getProductSku()] = true;
+                }
+            }
+
+            $this->repo->cancel($reservation);
+
+            $this->em->flush();
+
+            return [$reservation, array_keys($affectedSkus)];
         });
 
-        // Force initialization of lines collection while still in transaction
-        // Iterate over the collection to ensure it's fully loaded before transaction ends
-        $affectedSkus = [];
-        foreach ($updated->getLines() as $line) {
-            $affectedSkus[] = $line->getProductSku();
-        }
+//         Dispatch status changed message after cancellation
+        $this->dispatchStatusChangedMessage($reservation);
 
-        // Dispatch status changed message after cancellation
-        $this->dispatchStatusChangedMessage($updated);
+        $this->dispatchStockReallocation($reservation->getId(), $affectedSkus);
 
-        $this->dispatchStockReallocation($updated->getId(), $affectedSkus);
-
-        return $updated;
+        return $reservation;
     }
 
     public function reallocate(array $skus): StockReallocationResult
     {
         return $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($skus): StockReallocationResult {
+            $this->em->clear();
+
             $results = $this->allocator->reallocateSkus($skus);
 
             $this->em->flush();
@@ -91,9 +108,12 @@ final class StockReservationService
     public function ship(StockReservation $reservation, bool $allowPartial = false): StockReservation
     {
         $shippedReservation = $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($reservation, $allowPartial): StockReservation {
+            $this->em->clear();
+            $reservation = $em->find(StockReservation::class, $reservation->getId());
+
             $reservation = $this->shipper->shipReservation($reservation);
 
-            $this->repo->update($reservation);
+            $this->em->flush();
 
             return $reservation;
         });

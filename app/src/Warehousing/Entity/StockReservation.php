@@ -111,6 +111,8 @@ class StockReservation
             }
         }
 
+        $this->setReallocationLocked(false);
+
         if ($pending > 0) {
             $this->status = StockReservationStatus::PENDING->value;
             return;
@@ -118,6 +120,8 @@ class StockReservation
 
         if ($totalItems === $cancelled) {
             $this->status = StockReservationStatus::CANCELED->value;
+            $this->setReallocationLocked(true);
+
             return;
         }
 
@@ -141,7 +145,6 @@ class StockReservation
 
         if ($reservedPartial > 0) {
             $this->status = StockReservationStatus::RESERVED_PARTIAL->value;
-            $this->setReallocationLocked(false);
             return;
         }
 
@@ -150,16 +153,25 @@ class StockReservation
     private function isFullyReservedInSingleWarehouse(): bool
     {
         $warehouseId = null;
+        $hasLines = false;
+
         foreach ($this->getLines() as $line) {
-            // must be fully reserved and assigned to the same warehouse
+            $hasLines = true;
+
+            // must be fully reserved
             if ($line->getStatus() !== StockReservationLineStatus::RESERVED) {
                 return false;
             }
-            $currentWh = $line->getWarehouse();
-            if ($currentWh === null) {
+
+            // must have a warehouse
+            $warehouse = $line->getWarehouse();
+            if ($warehouse === null) {
                 return false;
             }
-            $currentId = method_exists($currentWh, 'getId') ? $currentWh->getId() : spl_object_hash($currentWh);
+
+            $currentId = $warehouse->getId();
+
+            // all lines must share the same warehouse
             if ($warehouseId === null) {
                 $warehouseId = $currentId;
             } elseif ($warehouseId !== $currentId) {
@@ -167,7 +179,8 @@ class StockReservation
             }
         }
 
-        return true;
+        // if there are no lines, it's not "fully reserved in a single warehouse"
+        return $hasLines;
     }
 
 

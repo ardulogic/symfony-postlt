@@ -4,6 +4,7 @@ namespace App\Warehousing\Service;
 
 use App\Warehousing\Entity\Warehouse;
 use App\Warehousing\Repository\WarehouseRepository;
+use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
@@ -22,7 +23,9 @@ final class WarehouseService
         // Wrap in transaction
         // we use this layer since the transaction could be much broader
         return $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($warehouse): Warehouse {
+            $this->em->clear();
             $this->repo->create($warehouse);
+            $this->em->flush();
 
             return $warehouse;
         });
@@ -34,7 +37,8 @@ final class WarehouseService
         // Wrap in transaction
         // we use this layer since the transaction could be much broader
         return $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($warehouse): Warehouse {
-            $this->repo->update($warehouse);
+
+            $em->flush();
 
             return $warehouse;
         });

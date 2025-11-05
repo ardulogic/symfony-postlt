@@ -3,6 +3,8 @@
 namespace App\Warehousing\Repository;
 
 use App\Warehousing\Entity\StockReservation;
+use App\Warehousing\Entity\StockReservationLine;
+use App\Warehousing\Enum\StockReservationLineStatus;
 use App\Warehousing\Service\StockReservationService;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
@@ -12,7 +14,7 @@ final class StockReservationRepository extends ServiceEntityRepository
 {
     public function __construct(ManagerRegistry $registry)
     {
-        parent::__construct($registry, StockReservation::class, StockReservationService::class);
+        parent::__construct($registry, StockReservation::class, StockReservationService::class, StockItemRepository::class);
     }
 
     public function findOneByNumber(string $number): ?StockReservation
@@ -79,21 +81,37 @@ final class StockReservationRepository extends ServiceEntityRepository
     {
         $em = $this->getEntityManager();
         $em->persist($entity);   // brand new
-        $em->flush();
-    }
-
-    /**
-     * Expects a MANAGED entity (loaded via this repo).
-     * Just flush tracked changes.
-     */
-    public function update(StockReservation $managed): void
-    {
-        $this->getEntityManager()->flush();
     }
 
     public function delete(StockReservation $reservation): void
     {
         $this->getEntityManager()->remove($reservation);
-        $this->getEntityManager()->flush();
     }
+
+    public function cancel(StockReservation $reservation): StockReservation
+    {
+        /** @var StockReservationLine $line */
+        foreach ($reservation->getLines() as $line) {
+
+            if ($this->stockLineCanBeCancelled($line)) {
+                $line->cancel();
+            }
+        }
+
+        $reservation->recomputeStatus();
+
+        return $reservation;
+    }
+
+    public function stockLineCanBeCancelled(StockReservationLine $reservation): bool
+    {
+        return in_array($reservation->getStatus(), [
+            StockReservationLineStatus::PENDING,
+            StockReservationLineStatus::RESERVED,
+            StockReservationLineStatus::RESERVED_PARTIAL,
+            StockReservationLineStatus::OUT_OF_STOCK,
+        ]);
+    }
+
+
 }

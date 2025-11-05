@@ -3,10 +3,12 @@ declare(strict_types=1);
 
 namespace App\Warehousing\Tests\Helpers;
 
+use App\Tests\Support\Queues\TestQueueWorker;
 use App\Warehousing\Dto\StockReceiveDto;
 use App\Warehousing\Entity\Warehouse;
 use App\Warehousing\Service\StockItemService;
 use Doctrine\Persistence\ObjectManager;
+use Symfony\Component\DependencyInjection\Container;
 
 /**
  * Builder for creating clear, readable stock allocation test scenarios.
@@ -17,11 +19,14 @@ final class StockAllocationScenarioBuilder
     private array $stockSetup = [];
     private ObjectManager $om;
     private StockItemService $stockItemService;
+    private Container $c;
 
-    public function __construct(ObjectManager $om, StockItemService $stockItemService)
+    public function __construct(ObjectManager $om, Container $c)
     {
         $this->om = $om;
-        $this->stockItemService = $stockItemService;
+        $this->c = $c;
+
+        $this->stockItemService = $this->c->get(StockItemService::class);
     }
 
     /**
@@ -69,6 +74,8 @@ final class StockAllocationScenarioBuilder
         }
 
         $this->om->flush();
+
+        TestQueueWorker::doQueuedJobs($this->c);
     }
 
     /**

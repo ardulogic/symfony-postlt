@@ -6,14 +6,15 @@ namespace App\Warehousing\Tests\Http\StockAllocation;
 use App\Tests\Support\WebTestCase;
 use App\Warehousing\Enum\StockReservationLineStatus;
 use App\Warehousing\Enum\StockReservationStatus;
-use App\Warehousing\Service\StockItemService;
 use App\Warehousing\Tests\DataFixtures\WarehouseTestFixture;
 use App\Warehousing\Tests\Helpers\StockAllocationScenarioBuilder;
+use App\Warehousing\Tests\Helpers\StockItemTestHelpers;
 use App\Warehousing\Tests\Helpers\StockReservationTestHelpers;
 
 final class StockAllocationScenarioTest extends WebTestCase
 {
     use StockReservationTestHelpers;
+    use StockItemTestHelpers;
 
     private StockAllocationScenarioBuilder $scenario;
 
@@ -22,8 +23,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         parent::setUp();
         $this->setUpRepositories();
 
-        $stockItemService = $this->c->get(StockItemService::class);
-        $this->scenario = new StockAllocationScenarioBuilder($this->em, $stockItemService);
+        $this->scenario = new StockAllocationScenarioBuilder($this->em, $this->getContainer());
     }
 
     protected function getRequiredFixtures(): array
@@ -58,7 +58,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         ]);
 
         $res = $this->readReservation('ORD-CONSOLIDATE-001');
-        $map = $this->lineMap($res);
+        $map = $this->mapReservationBySku($res);
 
         // Assertions
         self::assertSame(StockReservationStatus::RESERVED->value, $res['status']);
@@ -96,7 +96,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         ]);
 
         $res = $this->readReservation('ORD-MIX-001');
-        $map = $this->lineMap($res);
+        $map = $this->mapReservationBySku($res);
 
         // Assertions
         self::assertSame(StockReservationLineStatus::RESERVED->value, $map['SKU-A']['status']);
@@ -130,7 +130,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         ]);
 
         $res = $this->readReservation('ORD-PARTIAL-001');
-        $map = $this->lineMap($res);
+        $map = $this->mapReservationBySku($res);
 
         // Assertions
         self::assertSame(StockReservationStatus::RESERVED_PARTIAL->value, $res['status']);
@@ -165,7 +165,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         ]);
 
         $res = $this->readReservation('ORD-TIE-001');
-        $map = $this->lineMap($res);
+        $map = $this->mapReservationBySku($res);
 
         // Assertions
         $wh1 = $map['SKU-TIE-1']['warehouse'];
@@ -199,7 +199,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         ]);
 
         $res = $this->readReservation('ORD-FULL-PREF-001');
-        $map = $this->lineMap($res);
+        $map = $this->mapReservationBySku($res);
 
         // Assertions
         self::assertSame(StockReservationStatus::RESERVED->value, $res['status']);
@@ -234,7 +234,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         ]);
 
         $res = $this->readReservation('ORD-PREFER-CHOSEN-001');
-        $map = $this->lineMap($res);
+        $map = $this->mapReservationBySku($res);
 
         // Assertions
         self::assertSame(StockReservationLineStatus::RESERVED->value, $map['SKU-ONE']['status']);
@@ -266,7 +266,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         ]);
 
         $res = $this->readReservation('ORD-MIXED-OOS-001');
-        $map = $this->lineMap($res);
+        $map = $this->mapReservationBySku($res);
 
         self::assertSame(StockReservationLineStatus::RESERVED->value, $map['SKU-OK']['status']);
         self::assertSame(StockReservationLineStatus::OUT_OF_STOCK->value, $map['SKU-OOS']['status']);
@@ -298,7 +298,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         ]);
 
         $res = $this->readReservation('ORD-HR-001');
-        $map = $this->lineMap($res);
+        $map = $this->mapReservationBySku($res);
 
         $wh1 = $map['SKU-HR-1']['warehouse'];
         $wh2 = $map['SKU-HR-2']['warehouse'];
@@ -325,7 +325,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         $this->createReservationWithLines($number, [['productSku' => $sku, 'qty' => 2]]);
 
         $res = $this->readReservation($number);
-        $map = $this->lineMap($res);
+        $map = $this->mapReservationBySku($res);
 
         self::assertSame(StockReservationStatus::RESERVED->value, $res['status']);
         self::assertSame(StockReservationLineStatus::RESERVED->value, $map[$sku]['status']);
@@ -350,7 +350,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         $this->createReservationWithLines($number, [['productSku' => $sku, 'qty' => 3]]);
 
         $res = $this->readReservation($number);
-        $map = $this->lineMap($res);
+        $map = $this->mapReservationBySku($res);
 
         self::assertSame(StockReservationStatus::OUT_OF_STOCK->value, $res['status']);
         self::assertSame(StockReservationLineStatus::OUT_OF_STOCK->value, $map[$sku]['status']);
@@ -377,9 +377,9 @@ final class StockAllocationScenarioTest extends WebTestCase
         $this->createReservationWithLines($number, [['productSku' => $sku, 'qty' => 3]]);
 
         $res1 = $this->readReservation($number);
-        $reserved1 = $this->lineMap($res1)[$sku]['reserved'];
+        $reserved1 = $this->mapReservationBySku($res1)[$sku]['reserved'];
         $res2 = $this->readReservation($number);
-        $reserved2 = $this->lineMap($res2)[$sku]['reserved'];
+        $reserved2 = $this->mapReservationBySku($res2)[$sku]['reserved'];
 
         self::assertSame($reserved1, $reserved2, 'Reads must not mutate reserved quantities');
     }
@@ -405,7 +405,7 @@ final class StockAllocationScenarioTest extends WebTestCase
         $this->cancelReservation($number);
 
         $after = $this->readReservation($number);
-        $line = $this->lineMap($after)[$sku];
+        $line = $this->mapReservationBySku($after)[$sku];
 
         self::assertSame(StockReservationStatus::CANCELED->value, $after['status']);
         self::assertSame(StockReservationLineStatus::CANCELED->value, $line['status']);
@@ -436,13 +436,13 @@ final class StockAllocationScenarioTest extends WebTestCase
         $this->createReservationWithLines($number, [['productSku' => $sku, 'qty' => $availBefore + 10]]);
 
         $created = $this->readReservation($number);
-        $map = $this->lineMap($created);
+        $map = $this->mapReservationBySku($created);
         self::assertSame(StockReservationLineStatus::RESERVED_PARTIAL->value, $map[$sku]['status']);
 
         $this->cancelReservation($number);
 
         $after = $this->readReservation($number);
-        $line = $this->lineMap($after)[$sku];
+        $line = $this->mapReservationBySku($after)[$sku];
 
         self::assertSame(StockReservationStatus::CANCELED->value, $after['status']);
         self::assertSame(StockReservationLineStatus::CANCELED->value, $line['status']);
@@ -493,9 +493,9 @@ final class StockAllocationScenarioTest extends WebTestCase
         $this->createReservationWithLines($number, [['productSku' => $sku, 'qty' => 2]]);
 
         $res1 = $this->readReservation($number);
-        $reserved1 = $this->lineMap($res1)[$sku]['reserved'];
+        $reserved1 = $this->mapReservationBySku($res1)[$sku]['reserved'];
         $res2 = $this->readReservation($number);
-        $reserved2 = $this->lineMap($res2)[$sku]['reserved'];
+        $reserved2 = $this->mapReservationBySku($res2)[$sku]['reserved'];
 
         self::assertSame(2, $reserved1);
         self::assertSame(2, $reserved2);
