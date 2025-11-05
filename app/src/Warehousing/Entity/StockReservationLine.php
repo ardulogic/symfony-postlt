@@ -181,38 +181,6 @@ class StockReservationLine
     }
 
     /**
-     *
-     * @return void
-     */
-    public function reserveOnStock(): void
-    {
-        if ($this->getStockItem()) {
-            $qty = min($this->getStockItem()->getAvailableQty(), $this->getOrderedQty());
-
-            $this->getStockItem()->reserve($qty);
-            $this->setReservedQtyAt($qty, $this->getStockItem()->getWarehouse());
-
-            $this->recomputeStatus();
-        } else {
-            throw new \DomainException("You must set stock item first before calling this method.");
-        }
-    }
-
-    public function releaseFromStock(): void
-    {
-        if ($this->getStockItem()) {
-            $this->getStockItem()->release($this->getReservedQty());
-            $this->setWarehouse(null);
-            $this->setStockItem(null);
-            $this->releaseReservedQty();
-
-            $this->recomputeStatus();
-        } else {
-            throw new \DomainException("You must set stock item first before calling this method.");
-        }
-    }
-
-    /**
      * Works with both partial/non-partial shipments
      * @return void
      */
